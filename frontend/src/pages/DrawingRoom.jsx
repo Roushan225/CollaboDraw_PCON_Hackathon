@@ -1,33 +1,148 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import Canvas from "../components/Canvas";
 import Toolbar from "../components/Toolbar";
 import useSocket from "../hooks/useSocket";
 import api from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 
+// Simple Component to render vector previews of slides in a square card
+function SlidePreviewCard({ slide, isActive, onClick, onDelete, theme }) {
+  const isDark = theme === "dark";
+  const { name, drawingData } = slide;
+
+  // Define styling classes
+  const cardBorder = isActive
+    ? (isDark ? "border-white ring-2 ring-white/10" : "border-neutral-900 ring-2 ring-black/5")
+    : (isDark ? "border-white/10 hover:border-white/30" : "border-neutral-200 hover:border-neutral-400 bg-white");
+  
+  const textBg = isDark ? "bg-black/60 text-white/70" : "bg-neutral-100/80 text-neutral-800";
+  const canvasBg = isDark ? "bg-[#141416]" : "bg-neutral-50";
+
+  return (
+    <div
+      onClick={onClick}
+      className={`w-[72px] h-[72px] rounded-xl border flex flex-col relative overflow-hidden transition-all duration-200 cursor-pointer select-none shrink-0 group ${cardBorder} ${canvasBg}`}
+    >
+      {/* Dynamic Mini SVG drawing preview */}
+      <svg viewBox="0 0 1600 1000" className="w-full h-[52px] pointer-events-none p-1.5 opacity-80">
+        {drawingData?.map((shape, idx) => {
+          const color = shape.color === "#ffffff" && !isDark ? "#d4d4d8" : shape.color;
+          const strokeWidth = Math.max(8, shape.strokeWidth * 1.5);
+
+          if (shape.tool === "pen" || shape.tool === "eraser") {
+            const pointsStr = shape.points?.reduce((acc, val, i) => {
+              return acc + (i % 2 === 0 ? `${val},` : `${val} `);
+            }, "");
+            return (
+              <polyline
+                key={idx}
+                points={pointsStr}
+                fill="none"
+                stroke={shape.tool === "eraser" ? (isDark ? "#141416" : "#f5f5f5") : color}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            );
+          } else if (shape.tool === "rectangle") {
+            return (
+              <rect
+                key={idx}
+                x={shape.x}
+                y={shape.y}
+                width={shape.width}
+                height={shape.height}
+                fill="none"
+                stroke={color}
+                strokeWidth={strokeWidth}
+                rx={10}
+              />
+            );
+          } else if (shape.tool === "circle") {
+            return (
+              <circle
+                key={idx}
+                cx={shape.x}
+                cy={shape.y}
+                r={shape.radius}
+                fill="none"
+                stroke={color}
+                strokeWidth={strokeWidth}
+              />
+            );
+          } else if (shape.tool === "arrow" || shape.tool === "line") {
+            return (
+              <line
+                key={idx}
+                x1={shape.points[0]}
+                y1={shape.points[1]}
+                x2={shape.points[2]}
+                y2={shape.points[3]}
+                stroke={color}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+              />
+            );
+          } else if (shape.tool === "text") {
+            return (
+              <text
+                key={idx}
+                x={shape.x}
+                y={shape.y + 20}
+                fill={color}
+                fontSize={64}
+                fontWeight="bold"
+                fontFamily="sans-serif"
+              >
+                T
+              </text>
+            );
+          }
+          return null;
+        })}
+      </svg>
+
+      {/* Tiny Slide Label Panel */}
+      <div className={`h-5 flex items-center justify-between px-2 text-[9px] font-bold tracking-tight absolute bottom-0 left-0 right-0 ${textBg}`}>
+        <span className="truncate max-w-[45px]">{name}</span>
+        {onDelete && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="text-[9px] hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-1.5 shrink-0"
+            title="Delete slide"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DrawingRoom() {
   const { roomId } = useParams();
   const socketRef = useSocket();
   const { user } = useAuth();
   
-  // Theme check from local storage
+  // Dynamic theme matching (Lighter white vs Neutral Black)
   const [theme] = useState(() => localStorage.getItem("theme") || "dark");
   const isDark = theme === "dark";
 
-  // Project data
+  // Project details state
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [projectError, setProjectError] = useState("");
 
-  // Slides state
+  // Slide state array
   const [slides, setSlides] = useState([]);
   const [activeSlideId, setActiveSlideId] = useState("");
-  const [editingSlideId, setEditingSlideId] = useState("");
-  const [editName, setEditName] = useState("");
 
-  // Canvas drawing state
-  const [color, setColor] = useState("#ffffff");
+  // Drawing tools state
+  const [color, setColor] = useState(isDark ? "#ffffff" : "#000000"); // default matching color
   const [strokeWidth, setStrokeWidth] = useState(4);
   const [tool, setTool] = useState("pen");
   const [lines, setLines] = useState([]);
@@ -49,7 +164,6 @@ export default function DrawingRoom() {
         setProject(proj);
         setSlides(proj.slides || []);
         
-        // Default to first slide
         if (proj.slides && proj.slides.length > 0) {
           setActiveSlideId(proj.slides[0].slideId);
           setLines(proj.slides[0].drawingData || []);
@@ -78,14 +192,12 @@ export default function DrawingRoom() {
     socket.on("update-slides", (updatedSlides) => {
       setSlides(updatedSlides);
       
-      // If our active slide got deleted, switch to the first remaining slide
       const stillExists = updatedSlides.some(s => s.slideId === activeSlideId);
       if (!stillExists && updatedSlides.length > 0) {
         const fallback = updatedSlides[0];
         setActiveSlideId(fallback.slideId);
         setLines(fallback.drawingData || []);
       } else {
-        // Update lines of active slide if they changed
         const activeObj = updatedSlides.find(s => s.slideId === activeSlideId);
         if (activeObj) setLines(activeObj.drawingData || []);
       }
@@ -94,7 +206,6 @@ export default function DrawingRoom() {
     // Remote user switched slide
     socket.on("switch-slide", ({ slideId }) => {
       setActiveSlideId(slideId);
-      // Retrieve drawing lines of new active slide
       setSlides(currSlides => {
         const slideObj = currSlides.find(s => s.slideId === slideId);
         if (slideObj) setLines(slideObj.drawingData || []);
@@ -102,20 +213,35 @@ export default function DrawingRoom() {
       });
     });
 
+    // Remote user synced drawing canvas
+    socket.on("sync-canvas", ({ slideId: incomingSlideId, canvasData }) => {
+      if (incomingSlideId === activeSlideId) {
+        setLines(canvasData);
+      }
+      // Update local slide drawing data array immediately for card rendering
+      setSlides(prev => prev.map(s => {
+        if (s.slideId === incomingSlideId) {
+          return { ...s, drawingData: canvasData };
+        }
+        return s;
+      }));
+    });
+
     return () => {
       socket.off("connect");
       socket.off("update-slides");
       socket.off("switch-slide");
+      socket.off("sync-canvas");
     };
   }, [roomId, socketRef, project, activeSlideId]);
 
-  // Update canvas lines locally when switching activeSlideId
+  // Switch slide helper
   const handleSwitchSlide = (slideId) => {
     setActiveSlideId(slideId);
     const targetSlide = slides.find(s => s.slideId === slideId);
     setLines(targetSlide ? targetSlide.drawingData || [] : []);
 
-    // Broadcast switch event to other users
+    // Broadcast switch event
     socketRef.current?.emit("switch-slide", {
       roomId,
       slideId,
@@ -132,7 +258,6 @@ export default function DrawingRoom() {
       const newSlides = res.data.slides;
       setSlides(newSlides);
       
-      // Auto-switch to newly created slide
       setActiveSlideId(res.data.slideId);
       setLines([]);
 
@@ -144,15 +269,13 @@ export default function DrawingRoom() {
   };
 
   // Delete a slide
-  const handleDeleteSlide = async (slideId, e) => {
-    e.stopPropagation(); // Avoid switching to slide on click
+  const handleDeleteSlide = async (slideId) => {
     if (slides.length <= 1) return;
     try {
       const res = await api.delete(`/projects/${roomId}/slides/${slideId}`);
       const newSlides = res.data.slides;
       setSlides(newSlides);
 
-      // If we deleted the active slide, switch active selection to first remaining
       if (activeSlideId === slideId) {
         const fallbackId = newSlides[0].slideId;
         setActiveSlideId(fallbackId);
@@ -167,28 +290,15 @@ export default function DrawingRoom() {
     }
   };
 
-  // Start inline renaming
-  const startRename = (slideId, currentName, e) => {
-    e.stopPropagation();
-    setEditingSlideId(slideId);
-    setEditName(currentName);
-  };
-
-  // Submit inline renaming
-  const submitRename = async (slideId) => {
-    if (!editName.trim()) return;
-    try {
-      const res = await api.put(`/projects/${roomId}/slides/${slideId}`, {
-        name: editName.trim(),
-      });
-      const newSlides = res.data.slides;
-      setSlides(newSlides);
-      setEditingSlideId("");
-
-      // Broadcast changes
-      socketRef.current?.emit("update-slides", { roomId, slides: newSlides });
-    } catch (err) {
-      console.error("Failed to rename slide", err);
+  // Rename a slide prompt
+  const handleRenameSlide = (slide) => {
+    const newName = prompt("Enter new slide name:", slide.name);
+    if (newName && newName.trim()) {
+      api.put(`/projects/${roomId}/slides/${slide.slideId}`, { name: newName.trim() })
+        .then(res => {
+          setSlides(res.data.slides);
+          socketRef.current?.emit("update-slides", { roomId, slides: res.data.slides });
+        });
     }
   };
 
@@ -200,7 +310,7 @@ export default function DrawingRoom() {
         drawingData: updatedLines,
       });
 
-      // Update local state slides cache array
+      // Update local slide drawing data array immediately for card rendering
       setSlides(prev => prev.map(s => {
         if (s.slideId === activeSlideId) {
           return { ...s, drawingData: updatedLines };
@@ -280,19 +390,19 @@ export default function DrawingRoom() {
 
   const isCreator = project.creator?._id === user?.id || project.creator === user?.id;
 
-  // Theme variable colors
-  const bgClass = isDark ? "bg-[#0b0b0b] text-white" : "bg-[#fcfcfc] text-neutral-900";
-  const barBgClass = isDark ? "bg-black border-white/10" : "bg-white border-neutral-200 shadow-sm";
+  // Theme variables colors
+  const bgClass = isDark ? "bg-[#0b0b0d] text-white" : "bg-[#f5f5f7] text-neutral-900";
+  const barBgClass = isDark ? "bg-black/90 border-white/10" : "bg-white border-neutral-200 shadow-sm";
   const textMutedClass = isDark ? "text-white/40" : "text-neutral-500";
   const borderClass = isDark ? "border-white/10" : "border-neutral-200";
-  const slideHoverClass = isDark ? "hover:bg-white/5" : "hover:bg-neutral-100";
-  const activeSlideClass = isDark ? "bg-white/10 text-white" : "bg-neutral-950 text-white";
 
   return (
     <div className={`min-h-screen flex flex-col overflow-hidden transition-colors duration-300 ${bgClass}`}>
       
-      {/* Header */}
-      <header className={`border-b h-16 shrink-0 px-6 flex items-center justify-between transition-colors duration-300 ${barBgClass}`}>
+      {/* Header Bar (Increased height to h-24 & padded to px-8 for premium room layout) */}
+      <header className={`border-b h-24 shrink-0 px-8 flex items-center justify-between transition-colors duration-300 relative z-20 ${barBgClass}`}>
+        
+        {/* Left Side: Back action & Project Details */}
         <div className="flex items-center gap-4">
           <Link to="/" className={`hover:scale-105 transition-transform ${isDark ? "text-white/40 hover:text-white" : "text-neutral-400 hover:text-neutral-800"}`} title="Back to Dashboard">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -300,43 +410,157 @@ export default function DrawingRoom() {
             </svg>
           </Link>
           <div className={`h-4 w-px ${isDark ? "bg-white/10" : "bg-neutral-200"}`} />
+          
           <div>
-            <h1 className="font-bold text-sm tracking-tight">{project.name}</h1>
-            <p className={`text-[10px] ${textMutedClass}`}>Room ID: {project.projectId}</p>
+            <h1 className="font-extrabold text-sm tracking-tight">{project.name}</h1>
+            <p className={`text-[10px] ${textMutedClass}`}>ID: {project.projectId}</p>
           </div>
         </div>
 
-        {/* Member Indicators & Invites */}
-        <div className="flex items-center gap-3">
-          <div className="flex -space-x-1.5 overflow-hidden mr-1">
-            {project.members?.map((member, idx) => (
-              <div
-                key={member._id || idx}
-                title={member.username}
-                className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                  isDark ? "bg-neutral-800 border-black text-white/80" : "bg-neutral-100 border-white text-neutral-700 shadow-sm"
-                }`}
-              >
-                {member.username?.[0]?.toUpperCase()}
-              </div>
+        {/* Right Side: Square Slide cards row + Members & Invites */}
+        <div className="flex items-center gap-6">
+          
+          {/* Horizontal Slide Cards Row */}
+          <div className="flex items-center gap-2.5 overflow-x-auto max-w-lg py-1">
+            {slides.map((slide) => (
+              <SlidePreviewCard
+                key={slide.slideId}
+                slide={slide}
+                isActive={slide.slideId === activeSlideId}
+                onClick={() => handleSwitchSlide(slide.slideId)}
+                onDelete={slides.length > 1 ? () => handleDeleteSlide(slide.slideId) : null}
+                theme={theme}
+              />
             ))}
+
+            {/* Large + Icon Card to Create New Slide */}
+            <button
+              onClick={handleAddSlide}
+              className={`flex items-center justify-center w-[72px] h-[72px] rounded-xl border text-xl font-bold transition-all duration-150 ${
+                isDark
+                  ? "bg-white/5 border-white/10 hover:bg-white/10 text-white"
+                  : "bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-800 shadow-sm"
+              }`}
+              title="Add New Slide"
+            >
+              +
+            </button>
           </div>
 
-          {isCreator && (
-            <button
-              onClick={() => setShowInviteModal(true)}
-              className={`text-xs font-semibold px-3.5 py-1.5 rounded-full hover:scale-105 active:scale-95 transition-all duration-150 flex items-center gap-1 ${
-                isDark ? "bg-white text-black hover:bg-white/90" : "bg-neutral-900 text-white hover:bg-neutral-800 shadow-sm"
-              }`}
-            >
-              <span>+ Invite</span>
-            </button>
-          )}
+          <div className={`h-8 w-px ${isDark ? "bg-white/15" : "bg-neutral-200"}`} />
+
+          {/* Members & Invites */}
+          <div className="flex items-center gap-3">
+            <div className="flex -space-x-1.5 overflow-hidden">
+              {project.members?.map((member, idx) => (
+                <div
+                  key={member._id || idx}
+                  title={member.username}
+                  className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[9px] font-bold shrink-0 ${
+                    isDark ? "bg-neutral-800 border-black text-white/80" : "bg-neutral-100 border-white text-neutral-700 shadow-sm"
+                  }`}
+                >
+                  {member.username?.[0]?.toUpperCase()}
+                </div>
+              ))}
+            </div>
+
+            {isCreator && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowInviteModal(!showInviteModal)}
+                  className={`text-xs font-semibold px-3.5 py-1.5 rounded-full hover:scale-105 active:scale-95 transition-all duration-150 flex items-center gap-1 ${
+                    isDark ? "bg-white text-black hover:bg-white/90" : "bg-neutral-900 text-white hover:bg-neutral-800 shadow-sm"
+                  }`}
+                >
+                  <span>+ Invite</span>
+                </button>
+
+                {showInviteModal && (
+                  <div className={`absolute right-0 top-11 w-80 border rounded-2xl p-5 shadow-2xl z-30 transition-colors duration-300 ${
+                    isDark ? "bg-[#0d0d0f] border-white/10 text-white" : "bg-white border-neutral-200 text-neutral-900"
+                  }`}>
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-bold text-sm">Invite Collaborator</h3>
+                      <button
+                        onClick={() => { setShowInviteModal(false); setInviteError(""); setInviteSuccess(""); }}
+                        className={`text-xs transition-colors ${isDark ? "text-white/40 hover:text-white" : "text-neutral-400 hover:text-neutral-800"}`}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <p className={`text-[10px] mb-4 ${textMutedClass}`}>Search usernames to add them to this drawing canvas.</p>
+
+                    {inviteError && <div className="mb-3 text-[10px] text-red-400 bg-red-950/20 border border-red-900/50 p-2 rounded-lg">{inviteError}</div>}
+                    {inviteSuccess && <div className="mb-3 text-[10px] text-green-400 bg-green-950/20 border border-green-900/50 p-2 rounded-lg">{inviteSuccess}</div>}
+
+                    <div className="flex flex-col gap-3">
+                      <input
+                        type="text"
+                        placeholder="Search username..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className={`w-full border rounded-xl px-3 py-2 text-xs outline-none focus:border-white/30 ${
+                          isDark ? "bg-white/5 border-white/10 text-white" : "bg-neutral-50 border-neutral-200 text-neutral-900"
+                        }`}
+                      />
+
+                      {searchResults.length > 0 && (
+                        <div className={`border rounded-xl max-h-36 overflow-y-auto divide-y ${
+                          isDark ? "border-white/10 bg-white/[0.02] divide-white/5" : "border-neutral-200 bg-neutral-50 divide-neutral-200"
+                        }`}>
+                          {searchResults.map((u) => (
+                            <div key={u._id} className="p-2 flex items-center justify-between gap-2 text-xs">
+                              <span className="font-medium">{u.username}</span>
+                              <button
+                                onClick={() => handleInvite(u.username)}
+                                disabled={inviteLoading}
+                                className={`text-[9px] font-bold px-2.5 py-0.5 rounded hover:opacity-90 ${
+                                  isDark ? "bg-white text-black" : "bg-neutral-950 text-white"
+                                }`}
+                              >
+                                Invite
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {searchQuery.trim().length >= 2 && searchResults.length === 0 && (
+                        <p className="text-center text-[10px] text-white/30 py-1">No matching users found</p>
+                      )}
+
+                      <div className={`mt-3 pt-3 border-t ${isDark ? "border-white/10" : "border-neutral-200"}`}>
+                        <p className={`text-[9px] font-semibold uppercase tracking-wider mb-2 ${textMutedClass}`}>Current members</p>
+                        <div className="flex flex-col gap-1.5 max-h-28 overflow-y-auto">
+                          {project.members.map((m) => (
+                            <div key={m._id} className="flex items-center gap-2 text-[11px]">
+                              <div className={`w-4.5 h-4.5 rounded-full flex items-center justify-center text-[8px] font-bold ${
+                                isDark ? "bg-white/10 text-white/60" : "bg-neutral-200 text-neutral-700"
+                              }`}>
+                                {m.username?.[0]?.toUpperCase()}
+                              </div>
+                              <span>{m.username}</span>
+                              {m._id === project.creator?._id && <span className={`text-[7px] border px-1 rounded ml-auto ${
+                                isDark ? "border-white/10 bg-white/5 text-white/30" : "border-neutral-200 bg-neutral-50 text-neutral-400"
+                              }`}>Creator</span>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Toolbar strip */}
-      <div className={`py-2 px-6 border-b flex justify-center shrink-0 transition-colors duration-300 ${isDark ? "bg-[#080808] border-white/5" : "bg-neutral-50/50 border-neutral-200"}`}>
+      {/* Floating Canvas Area (Dynamic background matching active theme) */}
+      <main className={`flex-1 relative overflow-hidden flex items-center justify-start md:pl-20 transition-colors duration-300 ${
+        isDark ? "bg-[#0c0c0e]" : "bg-[#f5f5f7]"
+      }`}>
         <Toolbar
           color={color}
           setColor={setColor}
@@ -346,180 +570,20 @@ export default function DrawingRoom() {
           setTool={setTool}
           onClear={handleClear}
         />
-      </div>
 
-      {/* Workspace Panel: Left Sidebar (Slides List) + Right Content (Canvas) */}
-      <div className="flex-1 flex overflow-hidden">
-        
-        {/* SLIDES SIDEBAR */}
-        <aside className={`w-64 border-r shrink-0 flex flex-col p-4 transition-colors duration-300 ${isDark ? "bg-black border-white/10" : "bg-white border-neutral-200 shadow-sm"}`}>
-          <div className="flex items-center justify-between mb-4 px-2">
-            <span className={`text-[10px] font-bold uppercase tracking-wider ${textMutedClass}`}>Slides</span>
-            <button
-              onClick={handleAddSlide}
-              className={`w-5 h-5 rounded flex items-center justify-center text-xs hover:scale-105 transition-transform ${
-                isDark ? "bg-white/10 hover:bg-white/20 text-white" : "bg-neutral-100 hover:bg-neutral-200 text-neutral-800"
-              }`}
-              title="Add slide"
-            >
-              +
-            </button>
-          </div>
-
-          {/* Slides navigation list */}
-          <div className="flex-1 overflow-y-auto flex flex-col gap-1 pr-1">
-            {slides.map((slide) => {
-              const isActive = slide.slideId === activeSlideId;
-              const isEditing = slide.slideId === editingSlideId;
-              return (
-                <div
-                  key={slide.slideId}
-                  onClick={() => !isEditing && handleSwitchSlide(slide.slideId)}
-                  className={`group flex items-center justify-between px-3 py-2 rounded-xl text-left cursor-pointer transition-all duration-150 ${
-                    isActive ? activeSlideClass : `text-white/60 ${slideHoverClass}`
-                  }`}
-                >
-                  <div className="flex-1 flex items-center gap-2 min-w-0">
-                    <span className="text-xs opacity-40 shrink-0">▤</span>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        onBlur={() => submitRename(slide.slideId)}
-                        onKeyDown={(e) => e.key === "Enter" && submitRename(slide.slideId)}
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                        className="bg-neutral-800 text-white border border-neutral-700 rounded px-1.5 py-0.5 text-xs outline-none w-full font-medium"
-                      />
-                    ) : (
-                      <span className={`text-xs font-medium truncate ${
-                        isActive ? "text-white" : (isDark ? "text-white/70" : "text-neutral-700")
-                      }`}>
-                        {slide.name}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Inline actions (Rename/Delete) */}
-                  {!isEditing && (
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => startRename(slide.slideId, slide.name, e)}
-                        className={`p-1 rounded hover:bg-white/10 ${isActive ? "text-white" : "text-neutral-400"}`}
-                        title="Rename slide"
-                      >
-                        ✏️
-                      </button>
-                      {slides.length > 1 && (
-                        <button
-                          onClick={(e) => handleDeleteSlide(slide.slideId, e)}
-                          className="p-1 rounded hover:bg-red-500/20 text-red-500/70 hover:text-red-500"
-                          title="Delete slide"
-                        >
-                          🗑
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </aside>
-
-        {/* CANVAS WORKSPACE AREA */}
-        <div className="flex-1 bg-[#0a0a0a] relative overflow-hidden flex items-center justify-center">
-          <Canvas
-            socketRef={socketRef}
-            roomId={roomId}
-            color={color}
-            strokeWidth={strokeWidth}
-            tool={tool}
-            lines={lines}
-            setLines={setLines}
-            onDrawEnd={saveDrawingToBackend}
-          />
-        </div>
-      </div>
-
-      {/* Invite Member modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className={`w-full max-w-sm border rounded-2xl p-6 shadow-2xl relative transition-colors duration-300 ${
-            isDark ? "bg-[#0d0d0d] border-white/10 text-white" : "bg-white border-neutral-200 text-neutral-900"
-          }`}>
-            <button
-              onClick={() => { setShowInviteModal(false); setInviteError(""); setInviteSuccess(""); }}
-              className={`absolute right-4 top-4 transition-colors ${isDark ? "text-white/40 hover:text-white" : "text-neutral-400 hover:text-neutral-800"}`}
-            >
-              ✕
-            </button>
-
-            <h3 className="font-bold text-lg mb-1">Invite Collaborator</h3>
-            <p className={`text-xs mb-5 ${textMutedClass}`}>Search usernames to add them to this drawing canvas.</p>
-
-            {inviteError && <div className="mb-4 text-xs text-red-400 bg-red-950/20 border border-red-900/50 p-2.5 rounded-xl">{inviteError}</div>}
-            {inviteSuccess && <div className="mb-4 text-xs text-green-400 bg-green-950/20 border border-green-900/50 p-2.5 rounded-xl">{inviteSuccess}</div>}
-
-            <div className="flex flex-col gap-4">
-              <input
-                type="text"
-                placeholder="Search username..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className={`w-full border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-white/30 ${
-                  isDark ? "bg-white/5 border-white/10 text-white" : "bg-neutral-50 border-neutral-200 text-neutral-900"
-                }`}
-              />
-
-              {searchResults.length > 0 && (
-                <div className={`border rounded-xl max-h-40 overflow-y-auto divide-y ${
-                  isDark ? "border-white/10 bg-white/[0.02] divide-white/5" : "border-neutral-200 bg-neutral-50 divide-neutral-200"
-                }`}>
-                  {searchResults.map((u) => (
-                    <div key={u._id} className="p-3 flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium">{u.username}</span>
-                      <button
-                        onClick={() => handleInvite(u.username)}
-                        disabled={inviteLoading}
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-md hover:opacity-90 ${
-                          isDark ? "bg-white text-black" : "bg-neutral-950 text-white"
-                        }`}
-                      >
-                        Invite
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {searchQuery.trim().length >= 2 && searchResults.length === 0 && (
-                <p className="text-center text-xs text-white/30 py-2">No matching users found</p>
-              )}
-
-              <div className={`mt-4 pt-4 border-t ${isDark ? "border-white/10" : "border-neutral-200"}`}>
-                <p className={`text-[10px] font-semibold uppercase tracking-wider mb-2.5 ${textMutedClass}`}>Current members</p>
-                <div className="flex flex-col gap-2 max-h-36 overflow-y-auto">
-                  {project.members.map((m) => (
-                    <div key={m._id} className="flex items-center gap-2 text-xs">
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold ${
-                        isDark ? "bg-white/10 text-white/60" : "bg-neutral-200 text-neutral-700"
-                      }`}>
-                        {m.username?.[0]?.toUpperCase()}
-                      </div>
-                      <span>{m.username}</span>
-                      {m._id === project.creator?._id && <span className={`text-[8px] border px-1.5 py-0.25 rounded-md ml-auto ${
-                        isDark ? "border-white/10 bg-white/5 text-white/30" : "border-neutral-200 bg-neutral-50 text-neutral-400"
-                      }`}>Creator</span>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+        <Canvas
+          socketRef={socketRef}
+          roomId={roomId}
+          slideId={activeSlideId}
+          color={color}
+          strokeWidth={strokeWidth}
+          tool={tool}
+          lines={lines}
+          setLines={setLines}
+          onDrawEnd={saveDrawingToBackend}
+          theme={theme}
+        />
+      </main>
     </div>
   );
 }

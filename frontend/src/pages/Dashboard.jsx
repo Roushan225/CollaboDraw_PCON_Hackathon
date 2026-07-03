@@ -177,12 +177,73 @@ export default function Dashboard() {
               ))}
             </div>
           ) : projects.length === 0 ? (
-            /* Empty state */
-            <div className={`text-center py-24 border border-dashed rounded-3xl ${borderClass} ${isDark ? "bg-white/[0.005]" : "bg-neutral-50/50"}`}>
-              <span className="text-4xl block mb-4">📂</span>
-              <h3 className="font-bold text-lg mb-1">No sketchrooms found</h3>
+            /* Empty state with beautiful interactive whiteboard drawing animation */
+            <div className={`text-center py-20 border border-dashed rounded-3xl ${borderClass} ${isDark ? "bg-white/[0.005]" : "bg-neutral-50/50"}`}>
+              {/* CSS Animation Keyframes */}
+              <style dangerouslySetInnerHTML={{__html: `
+                @keyframes drawStroke {
+                  0% { stroke-dashoffset: 120; }
+                  70% { stroke-dashoffset: 0; }
+                  100% { stroke-dashoffset: 0; }
+                }
+                @keyframes penMove {
+                  0% { transform: translate(45px, 75px) rotate(0deg); opacity: 0; }
+                  10% { opacity: 1; }
+                  70% { transform: translate(145px, 45px) rotate(-15deg); opacity: 1; }
+                  90% { opacity: 0; }
+                  100% { transform: translate(145px, 45px) rotate(-15deg); opacity: 0; }
+                }
+                .animate-stroke {
+                  stroke-dasharray: 120;
+                  animation: drawStroke 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+                }
+                .animate-pen {
+                  animation: penMove 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+                  transform-origin: bottom left;
+                }
+              `}} />
+
+              {/* Animated Whiteboard SVG */}
+              <svg width="200" height="130" viewBox="0 0 200 130" fill="none" className="mx-auto mb-5">
+                {/* Board Frame */}
+                <rect x="25" y="15" width="150" height="95" rx="10" stroke={isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)"} strokeWidth="2.5" fill={isDark ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.01)"} />
+                {/* Grid dots background inside board */}
+                <circle cx="50" cy="35" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
+                <circle cx="100" cy="35" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
+                <circle cx="150" cy="35" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
+                <circle cx="50" cy="65" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
+                <circle cx="100" cy="65" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
+                <circle cx="150" cy="65" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
+                <circle cx="50" cy="95" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
+                <circle cx="100" cy="95" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
+                <circle cx="150" cy="95" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
+
+                {/* Vector Stroke Path */}
+                <path
+                  d="M 50 78 C 80 50, 110 95, 145 47"
+                  stroke={isDark ? "#ffffff" : "#000000"}
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  className="animate-stroke"
+                />
+
+                {/* Floating Stylus Pen */}
+                <g className="animate-pen">
+                  {/* Pen Body */}
+                  <path
+                    d="M-2 -28 L3 -28 L5 -3 L0 0 L-5 -3 L-3 -28 Z"
+                    fill={isDark ? "#ffffff" : "#171717"}
+                    stroke={isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)"}
+                    strokeWidth="1"
+                  />
+                  {/* Red tip */}
+                  <polygon points="0,0 2,-4 -2,-4" fill="#ef4444" />
+                </g>
+              </svg>
+
+              <h3 className="font-extrabold text-lg mb-1 tracking-tight">Your whiteboard is clear</h3>
               <p className={`text-xs ${textMutedClass} max-w-xs mx-auto mb-6`}>
-                You haven&apos;t created any projects yet. Enter a name in the box above to start.
+                Create your first project sketchroom above and start collaborating in real time.
               </p>
             </div>
           ) : (

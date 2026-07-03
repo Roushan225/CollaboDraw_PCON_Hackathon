@@ -3,6 +3,7 @@ const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const roomRoutes = require("./routes/roomRoutes");
 const authRoutes = require("./routes/authRoutes");
+const projectRoutes = require("./routes/projectRoutes");
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use(cookieParser());
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/room", roomRoutes);
+app.use("/api", projectRoutes);
 
 // Health check
 app.get("/", (req, res) => {

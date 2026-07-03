@@ -20,10 +20,11 @@ const projectSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
   }],
-  drawingData: {
-    type: Array,
-    default: [],
-  },
+  slides: [{
+    slideId: { type: String, required: true },
+    name: { type: String, required: true },
+    drawingData: { type: Array, default: [] },
+  }],
   createdAt: {
     type: Date,
     default: Date.now,

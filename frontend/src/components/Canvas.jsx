@@ -3,45 +3,49 @@ import { Stage, Layer, Line } from "react-konva";
 
 // Canvas.jsx — handles drawing locally and syncing via socket + sizing dynamically
 
-function Canvas({ socketRef, roomId, color, strokeWidth, tool, lines, setLines, onDrawEnd }) {
+function Canvas({ socketRef, roomId, slideId, color, strokeWidth, tool, lines, setLines, onDrawEnd }) {
   const isDrawing = useRef(false);
   const stageRef = useRef(null);
-  
-  // Track viewport dimensions to resize Konva container
+
+  // Track viewport dimensions to resize Konva container (accounting for 256px sidebar on desktop)
   const [dimensions, setDimensions] = useState({
-    width: window.innerWidth,
-    height: window.innerHeight - 150,
+    width: window.innerWidth > 768 ? window.innerWidth - 256 : window.innerWidth,
+    height: window.innerHeight - 200,
   });
 
   useEffect(() => {
     const handleResize = () => {
       setDimensions({
-        width: window.innerWidth,
-        height: window.innerHeight - 150,
+        width: window.innerWidth > 768 ? window.innerWidth - 256 : window.innerWidth,
+        height: window.innerHeight - 200,
       });
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Listen for draw events from other users
+  // Listen for draw events from other users (checking slideId match)
   useEffect(() => {
     const socket = socketRef.current;
     if (!socket) return;
 
-    socket.on("draw", (lineData) => {
-      setLines((prev) => [...prev, lineData]);
+    socket.on("draw", ({ slideId: incomingSlideId, lineData }) => {
+      if (incomingSlideId === slideId) {
+        setLines((prev) => [...prev, lineData]);
+      }
     });
 
-    socket.on("clear-canvas", () => {
-      setLines([]);
+    socket.on("clear-canvas", ({ slideId: incomingSlideId }) => {
+      if (incomingSlideId === slideId) {
+        setLines([]);
+      }
     });
 
     return () => {
       socket.off("draw");
       socket.off("clear-canvas");
     };
-  }, [socketRef, setLines]);
+  }, [socketRef, slideId, setLines]);
 
   // Mouse down — start a new line
   const handleMouseDown = (e) => {
@@ -77,11 +81,11 @@ function Canvas({ socketRef, roomId, color, strokeWidth, tool, lines, setLines, 
     if (!isDrawing.current) return;
     isDrawing.current = false;
 
-    // Get the latest line and sync it via socket
     setLines((currentLines) => {
       const lastLine = currentLines[currentLines.length - 1];
       if (lastLine && socketRef.current) {
-        socketRef.current.emit("draw", { roomId, lineData: lastLine });
+        // Scope socket event to active slideId
+        socketRef.current.emit("draw", { roomId, slideId, lineData: lastLine });
         // Call autosave callback
         onDrawEnd(currentLines);
       }

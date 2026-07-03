@@ -24,6 +24,7 @@ const sendToken = (res, user, statusCode) => {
 
   res.status(statusCode).json({
     success: true,
+    token, // Return token so frontend can store it locally if cookies are blocked
     user: {
       id: user._id,
       username: user.username,

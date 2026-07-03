@@ -1,6 +1,13 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
+const isProduction = process.env.NODE_ENV === "production";
+const cookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
+};
+
 // Helper: create JWT and set it as an HTTP-only cookie
 const sendToken = (res, user, statusCode) => {
   const token = jwt.sign(
@@ -11,9 +18,7 @@ const sendToken = (res, user, statusCode) => {
 
   // Secure HTTP-only cookie — JS can't read it (XSS protection)
   res.cookie("token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // HTTPS only in prod
-    sameSite: "lax",
+    ...cookieOptions,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
   });
 
@@ -82,11 +87,7 @@ const login = async (req, res) => {
 
 // POST /api/auth/logout
 const logout = (req, res) => {
-  res.clearCookie("token", {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-  });
+  res.clearCookie("token", cookieOptions);
   res.json({ success: true, message: "Logged out successfully" });
 };
 

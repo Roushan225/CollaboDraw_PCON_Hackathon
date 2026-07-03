@@ -6,9 +6,14 @@ const authRoutes = require("./routes/authRoutes");
 
 const app = express();
 
+const allowedOrigins = ("*" || "http://localhost:5173")
+  .split(",")
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
 // Allow requests from the frontend (with credentials for cookies)
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  origin: allowedOrigins,
   credentials: true, // required for cookies to be sent cross-origin
 }));
 

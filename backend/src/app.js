@@ -6,14 +6,29 @@ const authRoutes = require("./routes/authRoutes");
 
 const app = express();
 
-const allowedOrigins = ("*" || "http://localhost:5173")
-  .split(",")
-  .map(origin => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  "http://localhost:5173",
+].filter(Boolean);
 
 // Allow requests from the frontend (with credentials for cookies)
 app.use(cors({
-  origin: allowedOrigins,
+  origin: function (origin, callback) {
+    // Allow server-to-server or test requests with no origin
+    if (!origin) return callback(null, true);
+    
+    // If it matches allowed origins or matches localhost pattern
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.startsWith("http://localhost:")) {
+      return callback(null, true);
+    }
+    
+    // Fallback: reflect the origin to allow dynamic cross-origin credentials if wildcard is intended
+    if (process.env.CLIENT_URL === "*") {
+      return callback(null, true);
+    }
+    
+    callback(new Error("Not allowed by CORS"));
+  },
   credentials: true, // required for cookies to be sent cross-origin
 }));
 

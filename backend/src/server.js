@@ -21,9 +21,9 @@ const io = new Server(server, {
 // Setup socket event handlers
 setupSocket(io);
 
-// Connect to MongoDB then start server
-connectDB().then(() => {
-  server.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+// Start server listening immediately (allows Railway health checks to pass)
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  // Connect to MongoDB in the background
+  connectDB();
 });

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 /* ─────────────────────────────────────────────
    SMOOTH-SCROLL helper
@@ -294,10 +295,16 @@ export default function Home() {
   const [activeFeature, setActiveFeature] = useState(0);
   const featureRefs = useRef([]);
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const handleJoin = () => {
     const id = roomId.trim() || Math.random().toString(36).slice(2, 8).toUpperCase();
     navigate(`/room/${id}`);
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/");
   };
 
   /* Intersection observer — highlight sidebar item as user scrolls feature panels */
@@ -358,15 +365,49 @@ export default function Home() {
 
           {/* Right side */}
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleJoin}
-              className="text-sm bg-white text-black font-semibold px-4 py-2 rounded-full hover:bg-white/90 active:scale-95 transition-all duration-150 flex items-center gap-1.5"
-            >
-              Start Drawing
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                <path d="M1.5 5.5H9.5M9.5 5.5L6.5 2.5M9.5 5.5L6.5 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
+
+            {user ? (
+              /* Logged in — show avatar + username + logout */
+              <div className="flex items-center gap-3">
+                <div className="hidden md:flex items-center gap-2 border border-white/10 rounded-full px-3 py-1.5 bg-white/5">
+                  <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-[10px] font-bold">
+                    {user.username?.[0]?.toUpperCase()}
+                  </div>
+                  <span className="text-sm text-white/70">{user.username}</span>
+                </div>
+                <button
+                  onClick={handleJoin}
+                  className="text-sm bg-white text-black font-semibold px-4 py-2 rounded-full hover:bg-white/90 active:scale-95 transition-all duration-150 flex items-center gap-1.5"
+                >
+                  Start Drawing
+                  <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
+                    <path d="M1.5 5.5H9.5M9.5 5.5L6.5 2.5M9.5 5.5L6.5 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="hidden md:block text-xs text-white/30 hover:text-white/70 transition-colors"
+                >
+                  Log out
+                </button>
+              </div>
+            ) : (
+              /* Logged out — show Login + Signup */
+              <div className="flex items-center gap-3">
+                <Link
+                  to="/login"
+                  className="hidden md:block text-sm text-white/50 hover:text-white transition-colors"
+                >
+                  Log in
+                </Link>
+                <Link
+                  to="/signup"
+                  className="text-sm bg-white text-black font-semibold px-4 py-2 rounded-full hover:bg-white/90 active:scale-95 transition-all duration-150"
+                >
+                  Sign up
+                </Link>
+              </div>
+            )}
 
             {/* Mobile hamburger */}
             <button
@@ -395,13 +436,26 @@ export default function Home() {
                 {label}
               </button>
             ))}
-            <div className="border-t border-white/10 mt-2 pt-3">
-              <button
-                onClick={handleJoin}
-                className="w-full text-sm bg-white text-black font-semibold py-2.5 rounded-full"
-              >
-                Start Drawing →
-              </button>
+            <div className="border-t border-white/10 mt-2 pt-3 flex flex-col gap-2">
+              {user ? (
+                <>
+                  <button onClick={handleJoin} className="w-full text-sm bg-white text-black font-semibold py-2.5 rounded-full">
+                    Start Drawing →
+                  </button>
+                  <button onClick={handleLogout} className="text-sm text-white/40 hover:text-white py-1 transition-colors">
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link to="/signup" className="w-full text-center text-sm bg-white text-black font-semibold py-2.5 rounded-full block">
+                    Sign up
+                  </Link>
+                  <Link to="/login" className="text-sm text-center text-white/40 hover:text-white py-1 transition-colors block">
+                    Log in
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         )}

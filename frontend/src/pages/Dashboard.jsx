@@ -8,13 +8,17 @@ export default function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
   const [error, setError] = useState("");
-  
-  // Theme state: dark (default) or light (premium white)
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem("theme") || "dark";
-  });
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Selected project ID for filtering slides (null means 'All Files' / All Projects selected)
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+
+  // Theme check: light (premium white) or dark
+  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
+  const isDark = theme === "dark";
 
   const navigate = useNavigate();
 
@@ -22,7 +26,6 @@ export default function Dashboard() {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
-  // Load user's projects
   const fetchProjects = async () => {
     try {
       const res = await api.get("/projects");
@@ -44,7 +47,7 @@ export default function Dashboard() {
     setCreateLoading(true);
     setError("");
     try {
-      const res = await api.post("/projects", { name });
+      const res = await api.post("/projects", { name: name.trim() });
       navigate(`/room/${res.data.project.projectId}`);
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to create project");
@@ -58,286 +61,400 @@ export default function Dashboard() {
   };
 
   const toggleTheme = () => {
-    setTheme(prev => (prev === "dark" ? "light" : "dark"));
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
   };
 
-  // Theme-conditional classes
-  const isDark = theme === "dark";
-  const bgClass = isDark ? "bg-black text-white" : "bg-[#fcfcfc] text-neutral-900";
-  const navBgClass = isDark ? "border-white/10 bg-black/80" : "border-neutral-200 bg-white/80";
-  const borderClass = isDark ? "border-white/10" : "border-neutral-200";
-  const cardBgClass = isDark ? "bg-white/[0.02]" : "bg-white shadow-sm border border-neutral-100";
-  const textMutedClass = isDark ? "text-white/40" : "text-neutral-500";
-  const inputBgClass = isDark ? "bg-white/5 text-white" : "bg-neutral-50 text-neutral-950";
-  const listHoverClass = isDark ? "hover:bg-white/[0.02]" : "hover:bg-neutral-50";
+  // Compile Slide Items depending on folder selection
+  const slideItems = [];
+  if (selectedProjectId === null) {
+    // All Projects selected: Flatten all slides
+    projects.forEach((proj) => {
+      proj.slides?.forEach((slide) => {
+        slideItems.push({
+          ...slide,
+          project: proj,
+        });
+      });
+    });
+  } else {
+    // Specific Project selected: Filter slides belonging to it
+    const activeProject = projects.find((p) => p.projectId === selectedProjectId);
+    if (activeProject) {
+      activeProject.slides?.forEach((slide) => {
+        slideItems.push({
+          ...slide,
+          project: activeProject,
+        });
+      });
+    }
+  }
+
+  // Filter slide items by search query
+  const filteredSlides = slideItems.filter((slide) =>
+    slide.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // B&W theme classes
+  const bgClass = isDark ? "bg-[#0c0c0e] text-white" : "bg-[#f9f9fb] text-neutral-900";
+  const sidebarBg = isDark ? "bg-black border-white/10" : "bg-white border-neutral-200";
+  const mainBg = isDark ? "bg-[#0c0c0e]" : "bg-[#fcfcfd]";
+  const borderClass = isDark ? "border-white/10" : "border-neutral-200/80";
+  const textMuted = isDark ? "text-white/40" : "text-neutral-400";
+  const textSecondary = isDark ? "text-white/60" : "text-neutral-500";
+  const listHoverClass = isDark ? "hover:bg-white/5" : "hover:bg-neutral-50";
+
+  // Format date helper
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "---";
+    const date = new Date(dateStr);
+    const diffMs = Date.now() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffHours < 1) return "Just now";
+    if (diffHours < 24) return `${diffHours} hrs ago`;
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 30) return `${diffDays} days ago`;
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
 
   return (
-    <div className={`min-h-screen font-sans antialiased flex flex-col transition-colors duration-300 ${bgClass}`}>
+    <div className={`min-h-screen font-sans antialiased flex transition-colors duration-300 ${bgClass}`}>
       
-      {/* Navbar */}
-      <nav className={`border-b sticky top-0 z-40 backdrop-blur-xl transition-colors duration-300 ${navBgClass}`}>
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5">
-            <div className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors duration-300 ${isDark ? "bg-white text-black" : "bg-neutral-950 text-white"}`}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M2 14L6 6L10 10L14 2" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+      {/* 1. LEFT SIDEBAR (Roshan's Team Layout) */}
+      <aside className={`w-64 border-r flex flex-col justify-between p-5 shrink-0 select-none ${sidebarBg}`}>
+        <div className="flex flex-col gap-6">
+          {/* Logo / Team Selector Header */}
+          <div className="flex items-center justify-between p-2 rounded-xl transition-colors hover:bg-white/5 cursor-pointer">
+            <div className="flex items-center gap-3">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
+                isDark ? "bg-white text-black" : "bg-neutral-950 text-white"
+              }`}>
+                ▲
+              </div>
+              <span className="font-extrabold text-[14px] tracking-tight truncate max-w-[120px]">
+                {user?.username}&apos;s Team
+              </span>
             </div>
-            <span className="font-bold text-[16px] tracking-tight">CollaboDraw</span>
-          </Link>
-          
-          <div className="flex items-center gap-4">
-            {/* Theme Toggle Button */}
-            <button
-              onClick={toggleTheme}
-              className={`p-2 rounded-xl border transition-all duration-300 hover:scale-105 ${borderClass} ${isDark ? "bg-white/5 hover:bg-white/10" : "bg-white hover:bg-neutral-50 shadow-sm"}`}
-              title={isDark ? "Switch to Premium White" : "Switch to Dark Mode"}
-            >
-              {isDark ? (
-                /* Sun Icon */
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <circle cx="8" cy="8" r="3" />
-                  <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.4 1.4M11.55 11.55l1.4 1.4M1 15l14-14" strokeLinecap="round"/>
-                </svg>
-              ) : (
-                /* Moon Icon */
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M12 10.5a5 5 0 1 1-5-8.5A5.5 5.5 0 1 0 12 10.5z" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </button>
+            <span className={`text-[10px] ${textMuted}`}>▼</span>
+          </div>
 
-            {/* Profile Info */}
-            <div className={`flex items-center gap-2.5 border rounded-full px-3 py-1.5 text-xs font-medium transition-all duration-300 ${borderClass} ${isDark ? "bg-white/5 text-white/70" : "bg-white text-neutral-700 shadow-sm"}`}>
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${isDark ? "bg-white/20 text-white" : "bg-neutral-200 text-neutral-800"}`}>
+          {/* Navigation Section */}
+          <div className="flex flex-col gap-1">
+            <div
+              onClick={() => setSelectedProjectId(null)}
+              className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                selectedProjectId === null
+                  ? (isDark ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-900 shadow-sm border border-neutral-200/40")
+                  : `${listHoverClass} ${textSecondary}`
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <span>📁</span>
+                <span>All Files</span>
+              </div>
+              <span className={`text-[9px] px-1.5 py-0.5 rounded border ${isDark ? "border-white/10 bg-white/5 text-white/40" : "border-neutral-200 bg-neutral-50 text-neutral-400"}`}>A</span>
+            </div>
+          </div>
+
+          {/* Team Folders Section — Lists active Project Folders */}
+          <div>
+            <div className="flex items-center justify-between px-3.5 mb-2.5">
+              <span className={`text-[10px] font-extrabold tracking-wider uppercase ${textMuted}`}>Team Folders</span>
+              <button onClick={() => setShowCreateModal(true)} className={`text-xs hover:text-white ${textMuted}`}>+</button>
+            </div>
+            <div className="flex flex-col gap-1 max-h-60 overflow-y-auto">
+              {projects.map((proj) => {
+                const isActive = selectedProjectId === proj.projectId;
+                return (
+                  <div
+                    key={proj.projectId}
+                    onClick={() => setSelectedProjectId(proj.projectId)}
+                    className={`flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-all ${
+                      isActive
+                        ? (isDark ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-900 border border-neutral-200/40")
+                        : `${listHoverClass} ${textSecondary}`
+                    }`}
+                  >
+                    <span>📁</span>
+                    <span className="truncate">{proj.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Sidebar Bottom Action Buttons */}
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className={`w-full flex items-center justify-center gap-1.5 font-bold text-xs py-3 rounded-xl transition-all duration-150 active:scale-95 border ${
+              isDark
+                ? "bg-white text-black hover:bg-neutral-100 border-transparent"
+                : "bg-neutral-900 text-white hover:bg-neutral-800 border-neutral-900 shadow-md"
+            }`}
+          >
+            <span>+ New File</span>
+            <span className="opacity-40">^ N</span>
+          </button>
+
+          <div className={`h-px ${borderClass}`} />
+
+          <div className="flex items-center justify-between px-2">
+            {/* Profile badge & logout button */}
+            <div className="flex items-center gap-2 text-xs font-medium">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                isDark ? "bg-white/10 text-white" : "bg-neutral-200 text-neutral-800"
+              }`}>
                 {user?.username?.[0]?.toUpperCase()}
               </div>
-              <span>{user?.username}</span>
+              <span className="truncate max-w-[90px]">{user?.username}</span>
             </div>
             
             <button
               onClick={handleLogout}
-              className="text-xs text-red-500/70 hover:text-red-500 font-medium transition-colors"
+              className="text-[10px] text-red-500/70 hover:text-red-500 font-bold uppercase tracking-wider transition-colors"
             >
-              Log out
+              Logout
             </button>
           </div>
         </div>
-      </nav>
+      </aside>
 
-      {/* Main Dashboard Layout */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-12 flex flex-col gap-10">
+      {/* 2. MAIN CONTENT AREA */}
+      <main className={`flex-1 flex flex-col p-8 transition-colors duration-300 ${mainBg}`}>
         
-        {/* Top Control Bar — Header + Quick Create Inline */}
-        <div className={`flex flex-col md:flex-row md:items-center justify-between gap-6 border-b pb-8 ${borderClass}`}>
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">Project Board</h1>
-            <p className={`text-sm mt-1.5 ${textMutedClass}`}>Create and access your real-time collaborative sketchrooms.</p>
+        {/* Main top header bar inside content area */}
+        <header className="flex items-center justify-between border-b pb-5 mb-8 border-neutral-200/50">
+          {/* Main workspace navigation tabs */}
+          <div className="flex items-center gap-5 text-xs font-bold">
+            <span className={`cursor-pointer pb-2 border-b-2 ${isDark ? "border-white text-white" : "border-neutral-900 text-neutral-900"}`}>All</span>
+            <span className={`cursor-pointer pb-2 hover:text-white ${textMuted}`}>Recents</span>
+            <span className={`cursor-pointer pb-2 hover:text-white ${textMuted}`}>Created by Me</span>
+            <span className={`cursor-pointer pb-2 hover:text-white ${textMuted}`}>Folders</span>
           </div>
 
-          {/* Quick Create Project Form */}
-          <form onSubmit={handleCreate} className="flex items-center gap-3 shrink-0">
-            <div className={`flex items-center gap-2 border rounded-xl px-3 py-2 ${borderClass} ${isDark ? "bg-white/5" : "bg-white shadow-sm"} w-64`}>
-              <span className={textMutedClass}>✏️</span>
+          <div className="flex items-center gap-4">
+            {/* Search Input Box */}
+            <div className={`flex items-center gap-2 border rounded-xl px-3 py-1.5 w-60 ${borderClass} ${
+              isDark ? "bg-white/[0.02]" : "bg-white shadow-sm"
+            }`}>
+              <span className="text-xs">🔍</span>
               <input
                 type="text"
-                placeholder="New project name..."
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="bg-transparent text-sm placeholder-neutral-400 outline-none w-full"
+                placeholder="Search slides..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-transparent text-xs placeholder-neutral-400 outline-none w-full"
               />
+              <span className={`text-[8px] px-1 rounded border font-mono ${isDark ? "border-white/10 bg-white/5 text-white/30" : "border-neutral-200 bg-neutral-50 text-neutral-400"}`}>⌘K</span>
             </div>
+
+            {/* Theme Toggle Button */}
             <button
-              type="submit"
-              disabled={createLoading || !name.trim()}
-              className={`text-sm font-semibold px-5 py-2.5 rounded-xl active:scale-95 transition-all duration-150 whitespace-nowrap ${
-                isDark ? "bg-white text-black hover:bg-white/90" : "bg-neutral-900 text-white hover:bg-neutral-800 shadow-md"
+              onClick={toggleTheme}
+              className={`p-2 rounded-xl border transition-all duration-200 hover:scale-105 ${borderClass} ${
+                isDark ? "bg-white/5 hover:bg-white/10 text-white" : "bg-white hover:bg-neutral-50 shadow-sm text-neutral-800"
               }`}
+              title={isDark ? "Switch to Premium White" : "Switch to Dark Mode"}
             >
-              {createLoading ? "Creating..." : "Create"}
+              {isDark ? (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <circle cx="8" cy="8" r="3" />
+                  <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.4 1.4M11.55 11.55l1.4 1.4" strokeLinecap="round"/>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M12 10.5a5 5 0 1 1-5-8.5A5.5 5.5 0 1 0 12 10.5z" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
             </button>
-          </form>
-        </div>
-
-        {/* Error message banner */}
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-500 text-xs px-4 py-3 rounded-xl">
-            {error}
           </div>
-        )}
+        </header>
 
-        {/* PAGE UI: List/Directory layout */}
-        <div className="flex-1 flex flex-col">
+        {/* 3. CREATE BLANK CARD SECTION (Middle area) */}
+        <section className="mb-10">
+          <div
+            onClick={() => setShowCreateModal(true)}
+            className={`w-64 h-36 border rounded-2xl flex flex-col justify-between p-5 cursor-pointer transition-all duration-200 hover:scale-[1.02] ${
+              isDark
+                ? "bg-white/[0.01] hover:bg-white/[0.03] border-white/10"
+                : "bg-white hover:bg-neutral-50/50 border-neutral-200/80 shadow-sm"
+            }`}
+          >
+            <div className={`text-2xl font-semibold opacity-40`}>+</div>
+            <div>
+              <h3 className="text-xs font-extrabold tracking-tight">Create a Blank File</h3>
+              <p className={`text-[10px] mt-0.5 ${textMuted}`}>Start drawing instantly on a clean whiteboard canvas.</p>
+            </div>
+          </div>
+        </section>
+
+        {/* 4. DIRECTORY SLIDES TABLE LIST (Bottom area) */}
+        <section className="flex-1 flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-extrabold uppercase tracking-wider">
+              {selectedProjectId === null ? "All Board Slides" : "Project Slides"}
+            </h2>
+            <span className={`text-[10px] font-bold ${textMuted}`}>{filteredSlides.length} total slides</span>
+          </div>
+
           {loading ? (
-            /* Table skeleton loader */
-            <div className="flex flex-col gap-4">
-              {[1, 2, 3, 5].map((i) => (
-                <div key={i} className={`h-16 rounded-xl border animate-pulse ${borderClass} ${isDark ? "bg-white/[0.01]" : "bg-white"}`} />
+            /* Loader skeleton */
+            <div className="flex flex-col gap-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className={`h-14 rounded-xl border animate-pulse ${borderClass} ${isDark ? "bg-white/[0.01]" : "bg-white"}`} />
               ))}
             </div>
-          ) : projects.length === 0 ? (
-            /* Empty state with beautiful interactive whiteboard drawing animation */
+          ) : filteredSlides.length === 0 ? (
+            /* Empty state */
             <div className={`text-center py-20 border border-dashed rounded-3xl ${borderClass} ${isDark ? "bg-white/[0.005]" : "bg-neutral-50/50"}`}>
-              {/* CSS Animation Keyframes */}
-              <style dangerouslySetInnerHTML={{__html: `
-                @keyframes drawStroke {
-                  0% { stroke-dashoffset: 120; }
-                  70% { stroke-dashoffset: 0; }
-                  100% { stroke-dashoffset: 0; }
-                }
-                @keyframes penMove {
-                  0% { transform: translate(45px, 75px) rotate(0deg); opacity: 0; }
-                  10% { opacity: 1; }
-                  70% { transform: translate(145px, 45px) rotate(-15deg); opacity: 1; }
-                  90% { opacity: 0; }
-                  100% { transform: translate(145px, 45px) rotate(-15deg); opacity: 0; }
-                }
-                .animate-stroke {
-                  stroke-dasharray: 120;
-                  animation: drawStroke 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-                }
-                .animate-pen {
-                  animation: penMove 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-                  transform-origin: bottom left;
-                }
-              `}} />
-
-              {/* Animated Whiteboard SVG */}
-              <svg width="200" height="130" viewBox="0 0 200 130" fill="none" className="mx-auto mb-5">
-                {/* Board Frame */}
-                <rect x="25" y="15" width="150" height="95" rx="10" stroke={isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)"} strokeWidth="2.5" fill={isDark ? "rgba(255,255,255,0.01)" : "rgba(0,0,0,0.01)"} />
-                {/* Grid dots background inside board */}
-                <circle cx="50" cy="35" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
-                <circle cx="100" cy="35" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
-                <circle cx="150" cy="35" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
-                <circle cx="50" cy="65" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
-                <circle cx="100" cy="65" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
-                <circle cx="150" cy="65" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
-                <circle cx="50" cy="95" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
-                <circle cx="100" cy="95" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
-                <circle cx="150" cy="95" r="1" fill={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} />
-
-                {/* Vector Stroke Path */}
-                <path
-                  d="M 50 78 C 80 50, 110 95, 145 47"
-                  stroke={isDark ? "#ffffff" : "#000000"}
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  className="animate-stroke"
-                />
-
-                {/* Floating Stylus Pen */}
-                <g className="animate-pen">
-                  {/* Pen Body */}
-                  <path
-                    d="M-2 -28 L3 -28 L5 -3 L0 0 L-5 -3 L-3 -28 Z"
-                    fill={isDark ? "#ffffff" : "#171717"}
-                    stroke={isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)"}
-                    strokeWidth="1"
-                  />
-                  {/* Red tip */}
-                  <polygon points="0,0 2,-4 -2,-4" fill="#ef4444" />
-                </g>
-              </svg>
-
-              <h3 className="font-extrabold text-lg mb-1 tracking-tight">Your whiteboard is clear</h3>
-              <p className={`text-xs ${textMutedClass} max-w-xs mx-auto mb-6`}>
-                Create your first project sketchroom above and start collaborating in real time.
+              <span className="text-3xl block mb-3">📂</span>
+              <h3 className="font-extrabold text-sm mb-1 tracking-tight">No slide canvases found</h3>
+              <p className={`text-xs ${textMuted} max-w-xs mx-auto mb-5`}>
+                Click the &quot;New File&quot; sidebar button to add a new project space and slides.
               </p>
             </div>
           ) : (
-            /* PAGE UI: Directory/Table List */
+            /* Structured Slide Directory Table */
             <div className={`border rounded-2xl overflow-hidden ${borderClass} ${isDark ? "bg-black" : "bg-white shadow-sm"}`}>
-              {/* Header row */}
-              <div className={`hidden md:grid grid-cols-12 gap-4 px-6 py-4 text-xs font-semibold uppercase tracking-wider border-b ${borderClass} ${isDark ? "bg-white/[0.015] text-white/40" : "bg-neutral-50 text-neutral-500"}`}>
-                <div className="col-span-5">Project Name</div>
-                <div className="col-span-2">Project ID</div>
-                <div className="col-span-2">Owner</div>
-                <div className="col-span-2">Collaborators</div>
-                <div className="col-span-1 text-right">Actions</div>
+              
+              {/* Dynamic Table Header depends on whether "All Files" (extra project column) or single project is selected */}
+              <div className={`hidden md:grid grid-cols-12 gap-4 px-6 py-3.5 text-[10px] font-bold uppercase tracking-wider border-b ${borderClass} ${
+                isDark ? "bg-white/[0.015] text-white/30" : "bg-neutral-50/80 text-neutral-400"
+              }`}>
+                {selectedProjectId === null ? (
+                  // Headers with Project Name Column (All Projects selected)
+                  <>
+                    <div className="col-span-4">Name</div>
+                    <div className="col-span-3">Project Name</div>
+                    <div className="col-span-2">Created</div>
+                    <div className="col-span-2">Author</div>
+                    <div className="col-span-1 text-right">Actions</div>
+                  </>
+                ) : (
+                  // Headers for a single project selection (No project name column needed)
+                  <>
+                    <div className="col-span-5">Name</div>
+                    <div className="col-span-3">Created</div>
+                    <div className="col-span-3">Author</div>
+                    <div className="col-span-1 text-right">Actions</div>
+                  </>
+                )}
               </div>
 
-              {/* Rows */}
-              <div className="divide-y divide-white/5">
-                {projects.map((project) => {
-                  const isCreator = project.creator?._id === user?.id || project.creator === user?.id;
-                  const cardBorder = isDark ? "border-white/5" : "border-neutral-100";
+              {/* Rows list */}
+              <div className={`divide-y ${isDark ? "divide-white/5" : "divide-neutral-100"}`}>
+                {filteredSlides.map((slide) => {
+                  const isCreator = slide.project?.creator?._id === user?.id || slide.project?.creator === user?.id;
+                  const targetLink = `/room/${slide.project?.projectId}?slide=${slide.slideId}`;
+
                   return (
                     <div
-                      key={project.projectId}
-                      className={`grid grid-cols-1 md:grid-cols-12 gap-4 items-center px-6 py-5 transition-colors duration-150 ${listHoverClass} border-b ${cardBorder}`}
+                      key={slide.slideId}
+                      className={`grid grid-cols-1 md:grid-cols-12 gap-4 items-center px-6 py-4 transition-colors duration-100 ${listHoverClass}`}
                     >
-                      {/* Name */}
-                      <div className="col-span-12 md:col-span-5 flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
-                          isDark ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-800"
-                        }`}>
-                          📄
-                        </div>
-                        <div className="truncate">
-                          <Link
-                            to={`/room/${project.projectId}`}
-                            className="font-bold text-base hover:underline leading-snug"
-                          >
-                            {project.name}
-                          </Link>
-                          <span className={`block text-[11px] md:hidden mt-0.5 ${textMutedClass}`}>
-                            ID: {project.projectId} · Owner: {isCreator ? "You" : project.creator?.username}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* ID (desktop) */}
-                      <div className="hidden md:block col-span-2 font-mono text-xs tracking-wider text-neutral-400">
-                        <span className={`px-2.5 py-1 rounded-md border text-[10px] font-semibold uppercase ${
-                          isDark ? "bg-white/5 border-white/10 text-white/50" : "bg-neutral-50 border-neutral-200 text-neutral-600"
-                        }`}>
-                          {project.projectId}
-                        </span>
-                      </div>
-
-                      {/* Creator (desktop) */}
-                      <div className="hidden md:block col-span-2 text-sm">
-                        <span className={isCreator ? "font-medium text-white/80" : "text-neutral-400"}>
-                          {isCreator ? "You" : project.creator?.username}
-                        </span>
-                      </div>
-
-                      {/* Collaborators Stack */}
-                      <div className="col-span-6 md:col-span-2 flex items-center">
-                        <div className="flex -space-x-1.5 overflow-hidden">
-                          {project.members?.map((member, i) => (
-                            <div
-                              key={member._id || i}
-                              title={member.username}
-                              className={`w-6 h-6 rounded-full border flex items-center justify-center text-[8px] font-extrabold shrink-0 ${
-                                isDark ? "bg-neutral-800 border-black text-white/70" : "bg-neutral-100 border-white text-neutral-600"
-                              }`}
-                            >
-                              {member.username?.[0]?.toUpperCase()}
+                      {selectedProjectId === null ? (
+                        // 1. ALL FILES SELECTED LAYOUT (Colspan adjusted for Project Name column)
+                        <>
+                          {/* Slide Name */}
+                          <div className="col-span-12 md:col-span-4 flex items-center gap-3.5">
+                            <span className="text-base select-none shrink-0">📄</span>
+                            <div className="truncate">
+                              <Link
+                                to={targetLink}
+                                className="font-extrabold text-sm hover:underline leading-snug tracking-tight"
+                              >
+                                {slide.name}
+                              </Link>
+                              <span className={`block text-[10px] md:hidden mt-0.5 ${textMuted}`}>
+                                Project: {slide.project?.name} · {formatDate(slide.project?.createdAt)}
+                              </span>
                             </div>
-                          ))}
-                        </div>
-                        <span className={`text-[10px] ml-2 ${textMutedClass}`}>
-                          {project.members?.length || 0} total
-                        </span>
-                      </div>
+                          </div>
 
-                      {/* Action trigger button */}
-                      <div className="col-span-6 md:col-span-1 text-right">
+                          {/* Extra Column: Project Name */}
+                          <div className="hidden md:block col-span-3 text-xs font-bold truncate">
+                            <span className={textSecondary}>{slide.project?.name}</span>
+                          </div>
+
+                          {/* Created date */}
+                          <div className="hidden md:block col-span-2 text-xs font-semibold">
+                            <span className={textSecondary}>{formatDate(slide.project?.createdAt)}</span>
+                          </div>
+
+                          {/* Author badge */}
+                          <div className="hidden md:block col-span-2 text-xs">
+                            <div className="flex items-center gap-2">
+                              <div
+                                title={slide.project?.creator?.username}
+                                className={`w-5.5 h-5.5 rounded-full flex items-center justify-center text-[9px] font-extrabold border shrink-0 ${
+                                  isDark ? "bg-neutral-800 border-white/10 text-white/70" : "bg-neutral-100 border-neutral-200 text-neutral-700"
+                                }`}
+                              >
+                                {slide.project?.creator?.username?.[0]?.toUpperCase()}
+                              </div>
+                              <span className={`font-semibold truncate max-w-[80px] ${textSecondary}`}>
+                                {isCreator ? "You" : slide.project?.creator?.username}
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        // 2. SINGLE PROJECT SELECTED LAYOUT
+                        <>
+                          {/* Slide Name */}
+                          <div className="col-span-12 md:col-span-5 flex items-center gap-3.5">
+                            <span className="text-base select-none shrink-0">📄</span>
+                            <div className="truncate">
+                              <Link
+                                to={targetLink}
+                                className="font-extrabold text-sm hover:underline leading-snug tracking-tight"
+                              >
+                                {slide.name}
+                              </Link>
+                              <span className={`block text-[10px] md:hidden mt-0.5 ${textMuted}`}>
+                                {formatDate(slide.project?.createdAt)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Created date */}
+                          <div className="hidden md:block col-span-3 text-xs font-semibold">
+                            <span className={textSecondary}>{formatDate(slide.project?.createdAt)}</span>
+                          </div>
+
+                          {/* Author badge */}
+                          <div className="hidden md:block col-span-3 text-xs">
+                            <div className="flex items-center gap-2">
+                              <div
+                                title={slide.project?.creator?.username}
+                                className={`w-5.5 h-5.5 rounded-full flex items-center justify-center text-[9px] font-extrabold border shrink-0 ${
+                                  isDark ? "bg-neutral-800 border-white/10 text-white/70" : "bg-neutral-100 border-neutral-200 text-neutral-700"
+                                }`}
+                              >
+                                {slide.project?.creator?.username?.[0]?.toUpperCase()}
+                              </div>
+                              <span className={`font-semibold truncate max-w-[120px] ${textSecondary}`}>
+                                {isCreator ? "You" : slide.project?.creator?.username}
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Join slide link */}
+                      <div className="col-span-12 md:col-span-1 text-right">
                         <Link
-                          to={`/room/${project.projectId}`}
-                          className={`inline-flex items-center justify-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-xl transition-all duration-150 ${
+                          to={targetLink}
+                          className={`inline-flex items-center justify-center text-xs font-bold px-3 py-1.5 rounded-lg border transition-all duration-100 ${
                             isDark
-                              ? "bg-white/10 text-white hover:bg-white/20"
-                              : "bg-neutral-100 text-neutral-900 hover:bg-neutral-200"
+                              ? "bg-white/5 border-white/10 text-white/80 hover:bg-white/10"
+                              : "bg-white border-neutral-200 text-neutral-700 hover:bg-neutral-50 shadow-sm"
                           }`}
                         >
-                          Join
-                          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                            <path d="M1.5 4H6.5M6.5 4L4.5 2M6.5 4L4.5 6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
+                          Open
                         </Link>
                       </div>
                     </div>
@@ -346,8 +463,71 @@ export default function Dashboard() {
               </div>
             </div>
           )}
-        </div>
+        </section>
       </main>
+
+      {/* 5. CREATE FILE SPACE DIALOG OVERLAY MODAL */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            className={`w-full max-w-sm border rounded-2xl p-6 shadow-2xl transition-colors duration-300 ${
+              isDark ? "bg-[#0d0d0f] border-white/10 text-white" : "bg-white border-neutral-200 text-neutral-900"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-extrabold text-sm tracking-tight">Create a New File</h3>
+              <button
+                onClick={() => { setShowCreateModal(false); setName(""); setError(""); }}
+                className={`text-xs ${textMuted} hover:text-white`}
+              >
+                ✕
+              </button>
+            </div>
+            <p className={`text-[10px] mb-4 ${textMuted}`}>Create a collaborative board, invite other team members by searching their names.</p>
+
+            {error && (
+              <div className="mb-4 text-[10px] text-red-400 bg-red-950/20 border border-red-900/50 p-2 rounded-lg">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleCreate} className="flex flex-col gap-3">
+              <input
+                type="text"
+                placeholder="Enter file/project name..."
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoFocus
+                className={`w-full border rounded-xl px-3.5 py-2.5 text-xs outline-none focus:border-white/30 ${
+                  isDark ? "bg-white/5 border-white/10 text-white" : "bg-neutral-50 border-neutral-200 text-neutral-900"
+                }`}
+              />
+
+              <div className="flex gap-2 justify-end mt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowCreateModal(false); setName(""); setError(""); }}
+                  className={`text-[10px] font-bold px-3 py-2 rounded-lg border ${
+                    isDark ? "border-white/10 hover:bg-white/5 text-white/70" : "border-neutral-200 hover:bg-neutral-50 text-neutral-600"
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createLoading || !name.trim()}
+                  className={`text-[10px] font-bold px-4 py-2 rounded-lg ${
+                    isDark ? "bg-white text-black hover:bg-neutral-100" : "bg-neutral-900 text-white hover:bg-neutral-800"
+                  }`}
+                >
+                  {createLoading ? "Creating..." : "Create"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

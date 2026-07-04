@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import Canvas from "../components/Canvas";
 import useSocket from "../hooks/useSocket";
 import api from "../utils/api";
@@ -169,6 +169,10 @@ export default function DrawingRoom() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
 
+  // Search params from URL to handle opening specific slide directly
+  const [searchParams] = useSearchParams();
+  const querySlideId = searchParams.get("slide");
+
   // Fetch project details and slides on load
   useEffect(() => {
     const fetchProjectDetails = async () => {
@@ -179,8 +183,15 @@ export default function DrawingRoom() {
         setSlides(proj.slides || []);
         
         if (proj.slides && proj.slides.length > 0) {
-          setActiveSlideId(proj.slides[0].slideId);
-          setLines(proj.slides[0].drawingData || null);
+          // Check if custom slide query param is passed and valid
+          const targetSlide = proj.slides.find(s => s.slideId === querySlideId);
+          if (targetSlide) {
+            setActiveSlideId(targetSlide.slideId);
+            setLines(targetSlide.drawingData || null);
+          } else {
+            setActiveSlideId(proj.slides[0].slideId);
+            setLines(proj.slides[0].drawingData || null);
+          }
         }
       } catch (err) {
         setProjectError(err?.response?.data?.message || "Failed to load project");
@@ -189,7 +200,7 @@ export default function DrawingRoom() {
       }
     };
     fetchProjectDetails();
-  }, [roomId]);
+  }, [roomId, querySlideId]);
 
   // Handle Socket.io connections & synchronization events
   useEffect(() => {

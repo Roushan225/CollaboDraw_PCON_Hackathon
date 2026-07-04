@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from "react";
-import { Tldraw, createTLStore, loadSnapshot, defaultShapeUtils, defaultBindingUtils } from "tldraw";
+import { Tldraw, createTLStore, loadSnapshot, defaultShapeUtils, defaultBindingUtils, DefaultStylePanel } from "tldraw";
 import "tldraw/tldraw.css";
 
 // CSS Animation Keyframes for the micro-tutorial SVGs
@@ -64,11 +64,13 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
   // Active states
   const [activeTool, setActiveTool] = useState("select");
   const [hoveredTool, setHoveredTool] = useState(null);
+  const [showShapesMenu, setShowShapesMenu] = useState(false);
 
   const tools = [
     { id: "select", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 4l12 7.2-7 1.8 5 5-2 2-5-5-1.8 7z"/></svg> },
     { id: "hand", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v5"/><path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M6 14v-1.5a1.5 1.5 0 0 0-3 0V18a6 6 0 0 0 6 6h4a6 6 0 0 0 6-6v-3"/></svg> },
     { id: "draw", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> },
+    { id: "highlight", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 11-6 6v3h3l6-6M9 11l3 3M9 11l4-4M12 14l4-4M13 7l3 3M16 10l5-5-2-2-5 5"/></svg> },
     { id: "eraser", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m20 20-6.05-6.05"/><path d="M10 20v-5"/><path d="M17 17v-4"/><path d="M4 20h6"/><path d="M18.8 4.2a2.4 2.4 0 0 0-3.4 0l-12 12a2.4 2.4 0 0 0 0 3.4l1.6 1.6a2.4 2.4 0 0 0 3.4 0l12-12a2.4 2.4 0 0 0 0-3.4Z"/></svg> },
     { id: "arrow", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg> },
     { id: "line", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="20" x2="20" y2="4"/></svg> },
@@ -76,20 +78,36 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
     { id: "note", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8.5L15.5 3Z"/><path d="M15 3v6h6"/></svg> },
     { id: "rectangle", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg> },
     { id: "ellipse", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/></svg> },
-    { id: "triangle", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12,3 2,21 22,21"/></svg> },
+    { id: "more-shapes", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l8 8-8 8-8-8z"/><path d="M12 12v3M10.5 13.5h3"/></svg> },
     { id: "frame", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg> },
     { id: "laser", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> },
   ];
 
+  const subShapes = [
+    { id: "triangle", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12,3 2,21 22,21"/></svg> },
+    { id: "rhombus", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12,2 22,12 12,22 2,12"/></svg> },
+    { id: "star", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9"/></svg> },
+    { id: "cloud", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19A4.5 4.5 0 0 0 22 14.5a4.4 4.4 0 0 0-3.3-4.3 6 6 0 0 0-11.4 0A4.4 4.4 0 0 0 4 14.5 4.5 4.5 0 0 0 8.5 19h9z"/></svg> },
+  ];
+
+  const moreShapesIndex = tools.findIndex((t) => t.id === "more-shapes");
+  const moreShapesTop = 28 + (moreShapesIndex >= 0 ? moreShapesIndex : 11) * 38;
+
   // Calculate dynamic top offset for hovered tool card preview
   const hoveredIdx = tools.findIndex((t) => t.id === hoveredTool);
-  const activeHoveredIndex = hoveredIdx >= 0 
-    ? hoveredIdx 
-    : (hoveredTool === "undo" ? tools.length : (hoveredTool === "redo" ? tools.length + 1 : 0));
-  
-  // 20px (drag handle) + 8px (padding) + index * 38px (button height + gap) + 10px if it's undo/redo (for separator)
-  const isUndoRedo = hoveredTool === "undo" || hoveredTool === "redo";
-  const tooltipTop = 28 + (activeHoveredIndex * 38) + (isUndoRedo ? 10 : 0);
+  const isSubShapeHovered = subShapes.some((s) => s.id === hoveredTool);
+
+  let tooltipTop = 28;
+  if (hoveredIdx >= 0) {
+    tooltipTop = 28 + hoveredIdx * 38;
+  } else if (isSubShapeHovered) {
+    const subIdx = subShapes.findIndex((s) => s.id === hoveredTool);
+    tooltipTop = moreShapesTop + 8 + subIdx * 38;
+  } else if (hoveredTool === "undo") {
+    tooltipTop = 28 + tools.length * 38 + 10;
+  } else if (hoveredTool === "redo") {
+    tooltipTop = 28 + (tools.length + 1) * 38 + 10;
+  }
 
   // ─── CORE: Create a pre-populated store each time the slide changes ────────
   // This is the official tldraw pattern: build the store with data BEFORE mounting.
@@ -142,12 +160,25 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
   const dragStart = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Save toolbar position
+  // Draggable style panel state (persisted per room)
+  const [stylePanelPos, setStylePanelPos] = useState(() => {
+    const saved = localStorage.getItem(`style-panel-pos-${roomId}`);
+    // Default style panel placement: top right of screen, offset to clear header
+    return saved ? JSON.parse(saved) : { x: window.innerWidth - 248, y: 120 };
+  });
+  const stylePanelDragStart = useRef(null);
+  const [isStylePanelDragging, setIsStylePanelDragging] = useState(false);
+
+  // Save toolbar and style panel positions
   useEffect(() => {
     localStorage.setItem(`toolbar-pos-${roomId}`, JSON.stringify(toolbarPos));
   }, [toolbarPos, roomId]);
 
-  // Drag handlers
+  useEffect(() => {
+    localStorage.setItem(`style-panel-pos-${roomId}`, JSON.stringify(stylePanelPos));
+  }, [stylePanelPos, roomId]);
+
+  // Drag handlers for Toolbar
   const handleMouseDown = (e) => {
     e.preventDefault();
     dragStart.current = {
@@ -164,6 +195,30 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
     const handleMouseUp = () => {
       dragStart.current = null;
       setIsDragging(false);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  // Drag handlers for Style Panel
+  const handleStylePanelMouseDown = (e) => {
+    e.preventDefault();
+    stylePanelDragStart.current = {
+      startX: e.clientX - stylePanelPos.x,
+      startY: e.clientY - stylePanelPos.y,
+    };
+    setIsStylePanelDragging(true);
+    const handleMouseMove = (event) => {
+      if (!stylePanelDragStart.current) return;
+      const newX = Math.max(10, Math.min(window.innerWidth - 240, event.clientX - stylePanelDragStart.current.startX));
+      const newY = Math.max(10, Math.min(window.innerHeight - 450, event.clientY - stylePanelDragStart.current.startY));
+      setStylePanelPos({ x: newX, y: newY });
+    };
+    const handleMouseUp = () => {
+      stylePanelDragStart.current = null;
+      setIsStylePanelDragging(false);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
@@ -257,6 +312,15 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
     } else if (toolName === "triangle") {
       editor.setCurrentTool("geo", { geo: "triangle", shapeType: "triangle" });
       setActiveTool("triangle");
+    } else if (toolName === "rhombus") {
+      editor.setCurrentTool("geo", { geo: "rhombus", shapeType: "rhombus" });
+      setActiveTool("rhombus");
+    } else if (toolName === "star") {
+      editor.setCurrentTool("geo", { geo: "star", shapeType: "star" });
+      setActiveTool("star");
+    } else if (toolName === "cloud") {
+      editor.setCurrentTool("geo", { geo: "cloud", shapeType: "cloud" });
+      setActiveTool("cloud");
     } else {
       editor.setCurrentTool(toolName);
       setActiveTool(toolName);
@@ -295,6 +359,15 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
       svg: (
         <svg width="100%" height="45" viewBox="0 0 100 45">
           <path d="M 20 30 Q 40 10, 60 30 T 80 15" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" className="animate-tut-stroke" />
+        </svg>
+      ),
+    },
+    highlight: {
+      title: "Highlighter (Shift+D)",
+      desc: "Draw semi-transparent marks. Perfect for highlighting work.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45">
+          <path d="M 20 22 C 35 12, 65 32, 80 22" stroke="rgba(255, 230, 0, 0.45)" strokeWidth="12" fill="none" strokeLinecap="square" />
         </svg>
       ),
     },
@@ -381,6 +454,33 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         </svg>
       ),
     },
+    rhombus: {
+      title: "Rhombus / Diamond Shape",
+      desc: "Insert rhombus/diamond shapes. Perfect for decisions in flowcharts.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45">
+          <polygon points="50,8 70,22 50,36 30,22" stroke="currentColor" strokeWidth="2" fill="none" className="animate-tut-stroke" />
+        </svg>
+      ),
+    },
+    star: {
+      title: "Star Shape",
+      desc: "Insert geometric star shapes with adjustable points.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45">
+          <polygon points="50,6 59,18 73,18 62,26 66,39 50,30 34,39 38,26 27,18 41,18" stroke="currentColor" strokeWidth="2" fill="none" className="animate-tut-stroke" />
+        </svg>
+      ),
+    },
+    cloud: {
+      title: "Cloud Shape",
+      desc: "Insert cloud shapes. Excellent for mockups and wireframes.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45">
+          <path d="M35,26 a6,6 0 0,1 6,-6 a8,8 0 0,1 15,-3 a6,6 0 0,1 10,6 a5,5 0 0,1 0,8 h-31 z" stroke="currentColor" strokeWidth="2" fill="none" className="animate-tut-stroke" />
+        </svg>
+      ),
+    },
     frame: {
       title: "Frame Container (F)",
       desc: "Define frame zones to group content or export specific regions.",
@@ -429,11 +529,16 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         .tlui-toolbar { display: none !important; }
         .tlui-help-menu, .tlui-debug-panel, .tlui-keyboard-shortcuts-button,
         [data-testid="help-menu"], [data-testid="debug-menu"] { display: none !important; }
+        .tlui-navigation-zone {
+          bottom: 12px !important;
+          left: 12px !important;
+          z-index: 99 !important;
+        }
         .tlui-menu-zone {
           display: flex !important;
           position: absolute !important;
           bottom: 12px !important;
-          left: 78px !important;
+          left: 140px !important;
           top: auto !important;
           background: transparent !important;
           border: none !important;
@@ -441,8 +546,22 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
           z-index: 99 !important;
         }
         .tlui-style-panel {
-          transform: translate(${isChatOpen ? "-320px" : "0px"}, ${isInviteOpen ? "220px" : "0px"}) !important;
-          transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          position: static !important;
+          transform: none !important;
+          box-shadow: none !important;
+          border: none !important;
+          background: transparent !important;
+          padding: 0 !important;
+          width: 100% !important;
+        }
+        .flyout-hover-bridge::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          left: -12px;
+          width: 12px;
+          background: transparent;
         }
       `}} />
 
@@ -467,22 +586,41 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         <div className={`w-12 border p-2 flex flex-col gap-1.5 items-center rounded-b-xl ${
           isDark ? "bg-[#141416] border-white/10 text-white" : "bg-white border-neutral-200 text-neutral-800"
         }`}>
-          {tools.map(({ id, icon }) => (
-            <button
-              key={id}
-              onClick={() => selectTool(id)}
-              onMouseEnter={() => setHoveredTool(id)}
-              onMouseLeave={() => setHoveredTool(null)}
-              title={id}
-              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
-                activeTool === id || activeTool === `${id}.idle`
-                  ? "bg-[#007aff] text-white"
-                  : isDark ? "hover:bg-white/5" : "hover:bg-neutral-100"
-              }`}
-            >
-              {icon}
-            </button>
-          ))}
+          {tools.map(({ id, icon }) => {
+            const isGroup = id === "more-shapes";
+            const isSubShapeActive = ["triangle", "rhombus", "star", "cloud"].includes(activeTool);
+            const isActive = isGroup ? isSubShapeActive : (activeTool === id || activeTool === `${id}.idle`);
+
+            return (
+              <button
+                key={id}
+                onClick={() => {
+                  if (isGroup) {
+                    setShowShapesMenu(!showShapesMenu);
+                  } else {
+                    selectTool(id);
+                    setShowShapesMenu(false);
+                  }
+                }}
+                onMouseEnter={() => {
+                  setHoveredTool(id);
+                  if (isGroup) setShowShapesMenu(true);
+                }}
+                onMouseLeave={() => {
+                  setHoveredTool(null);
+                  if (isGroup) setShowShapesMenu(false);
+                }}
+                title={isGroup ? "More Shapes" : id}
+                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                  isActive
+                    ? "bg-[#007aff] text-white"
+                    : isDark ? "hover:bg-white/5" : "hover:bg-neutral-100"
+                }`}
+              >
+                {icon}
+              </button>
+            );
+          })}
 
           <div className={`h-px w-6 my-1 ${isDark ? "bg-white/10" : "bg-neutral-200"}`} />
 
@@ -508,11 +646,46 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
           </button>
         </div>
 
+        {/* Flyout Sub-menu for Shapes */}
+        {showShapesMenu && (
+          <div
+            onMouseEnter={() => setShowShapesMenu(true)}
+            onMouseLeave={() => setShowShapesMenu(false)}
+            className={`absolute left-13 w-12 border p-2 flex flex-col gap-1.5 items-center rounded-xl shadow-2xl backdrop-blur-xl flyout-hover-bridge ${
+              isDark ? "bg-[#141416]/95 border-white/10" : "bg-white/95 border-neutral-200"
+            }`}
+            style={{ top: `${moreShapesTop}px` }}
+          >
+            {subShapes.map((sub) => {
+              const isActive = activeTool === sub.id || activeTool === `${sub.id}.idle`;
+              return (
+                <button
+                  key={sub.id}
+                  onClick={() => {
+                    selectTool(sub.id);
+                    setShowShapesMenu(false);
+                  }}
+                  onMouseEnter={() => setHoveredTool(sub.id)}
+                  onMouseLeave={() => setHoveredTool(null)}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
+                    isActive
+                      ? "bg-[#007aff] text-white"
+                      : isDark ? "hover:bg-white/5 text-white" : "hover:bg-neutral-100 text-neutral-800"
+                  }`}
+                  title={sub.id}
+                >
+                  {sub.icon}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Tutorial card on hover - dynamically positioned vertically next to the hovered button */}
         {hoveredTool && toolTutorials[hoveredTool] && (
           <div 
-            style={{ top: `${tooltipTop}px` }}
-            className={`absolute left-14 w-60 p-4 border rounded-2xl shadow-2xl flex flex-col gap-2.5 backdrop-blur-xl transition-all duration-150 ${
+            style={{ top: `${tooltipTop}px`, left: isSubShapeHovered ? "110px" : "56px" }}
+            className={`absolute w-60 p-4 border rounded-2xl shadow-2xl flex flex-col gap-2.5 backdrop-blur-xl transition-all duration-150 ${
               isDark ? "bg-[#121214]/95 border-white/10 text-white" : "bg-white/95 border-neutral-200 text-neutral-800"
             }`}
           >
@@ -538,6 +711,38 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
       */}
       <Tldraw
         store={store}
+        components={{
+          StylePanel: () => (
+            <div
+              className="fixed z-[100] flex flex-col items-start select-none transition-transform duration-300 ease-in-out"
+              style={{
+                left: `${stylePanelPos.x}px`,
+                top: `${stylePanelPos.y}px`,
+                pointerEvents: "all",
+                transform: isChatOpen ? "translateX(-320px)" : "translateX(0px)",
+              }}
+            >
+              {/* Drag Handle */}
+              <div
+                onMouseDown={handleStylePanelMouseDown}
+                className={`w-[224px] h-5 rounded-t-xl flex items-center justify-center border-t border-x cursor-grab active:cursor-grabbing transition-colors ${
+                  isDark ? "bg-[#141416] border-white/10 text-white/30 hover:text-white/60" : "bg-white border-neutral-200 text-neutral-400 hover:text-neutral-600"
+                } ${isStylePanelDragging ? "cursor-grabbing" : ""}`}
+              >
+                <svg width="14" height="4" viewBox="0 0 14 4" fill="currentColor">
+                  <circle cx="2" cy="2" r="1" /><circle cx="7" cy="2" r="1" /><circle cx="12" cy="2" r="1" />
+                </svg>
+              </div>
+
+              {/* Style Panel Body */}
+              <div className={`w-[224px] border p-3 rounded-b-xl backdrop-blur-xl ${
+                isDark ? "bg-[#141416]/95 border-white/10 text-white" : "bg-white/95 border-neutral-200 text-neutral-800"
+              }`}>
+                <DefaultStylePanel />
+              </div>
+            </div>
+          )
+        }}
         onMount={(editorInstance) => {
           editorRef.current = editorInstance;
 
@@ -554,7 +759,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
                 editorInstance.updateViewportScreenBounds();
               } catch (e) {
                 // ignore potential sizing errors during rapid lifecycle changes
-              }
+               }
             }
           }, 100);
         }}

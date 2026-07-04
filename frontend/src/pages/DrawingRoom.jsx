@@ -183,6 +183,9 @@ export default function DrawingRoom() {
   const [chatInput, setChatInput] = useState("");
   const [messages, setMessages] = useState([]);
   const messagesEndRef = useRef(null);
+  const [pulseButton, setPulseButton] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const prevMessagesLengthRef = useRef(messages.length);
 
   // Auto-scroll chat to bottom
   useEffect(() => {
@@ -190,6 +193,20 @@ export default function DrawingRoom() {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, showChatPanel]);
+
+  // Trigger pop animation and manage unread count on chat icon when a new message arrives
+  useEffect(() => {
+    if (showChatPanel) {
+      setUnreadCount(0);
+    } else if (messages.length > prevMessagesLengthRef.current) {
+      const diff = messages.length - prevMessagesLengthRef.current;
+      setUnreadCount((prev) => prev + diff);
+      setPulseButton(true);
+      const timer = setTimeout(() => setPulseButton(false), 600);
+      return () => clearTimeout(timer);
+    }
+    prevMessagesLengthRef.current = messages.length;
+  }, [messages.length, showChatPanel]);
 
   // Fetch project details and slides on load
   useEffect(() => {
@@ -490,8 +507,31 @@ export default function DrawingRoom() {
   const barBgClass = isDark ? "bg-black/90 border-white/10" : "bg-white border-neutral-200 shadow-sm";
   const textMutedClass = isDark ? "text-white/40" : "text-neutral-500";
 
+  // Custom keyframes for premium UI animations
+  const chatStyles = `
+    @keyframes chatPop {
+      0% { transform: scale(1); }
+      30% { transform: scale(1.15) rotate(-8deg); }
+      50% { transform: scale(0.92) rotate(6deg); }
+      75% { transform: scale(1.06) rotate(-3deg); }
+      100% { transform: scale(1); }
+    }
+    @keyframes badgePop {
+      0% { transform: scale(0); opacity: 0; }
+      80% { transform: scale(1.3); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .animate-chat-pop {
+      animation: chatPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+    .animate-badge-pop {
+      animation: badgePop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+  `;
+
   return (
     <div className={`min-h-screen flex flex-col overflow-hidden transition-colors duration-300 ${bgClass}`}>
+      <style dangerouslySetInnerHTML={{ __html: chatStyles }} />
       
       {/* Header Bar */}
       <header className={`border-b h-24 shrink-0 px-8 flex items-center justify-between transition-colors duration-300 relative z-20 ${barBgClass}`}>
@@ -704,15 +744,17 @@ export default function DrawingRoom() {
           style={{ right: showChatPanel ? "344px" : "24px" }}
           className={`fixed bottom-6 z-[101] w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 ${
             isDark ? "bg-[#007aff] text-white hover:bg-[#007aff]/90" : "bg-neutral-900 text-white hover:bg-neutral-800"
-          }`}
+          } ${pulseButton ? "animate-chat-pop" : ""}`}
           title="Open Collaboration Chat"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          {messages.length > 0 && !showChatPanel && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-extrabold w-4.5 h-4.5 rounded-full flex items-center justify-center ring-2 ring-white">
-              {messages.length}
+          {unreadCount > 0 && !showChatPanel && (
+            <span className={`absolute -top-1 -right-1 bg-gradient-to-r from-red-500 to-rose-600 text-white text-[8px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center ring-2 animate-badge-pop ${
+              isDark ? "ring-[#0c0c0e]" : "ring-white"
+            }`}>
+              {unreadCount}
             </span>
           )}
         </button>

@@ -404,7 +404,9 @@ export default function Dashboard() {
               {/* Rows list */}
               <div className={`divide-y ${isDark ? "divide-white/5" : "divide-neutral-100"}`}>
                 {filteredSlides.map((slide) => {
-                  const isCreator = slide.project?.creator?._id === user?.id || slide.project?.creator === user?.id;
+                  const loggedInUserId = user?._id || user?.id;
+                  const creatorId = slide.project?.creator?._id || slide.project?.creator;
+                  const isCreator = loggedInUserId && creatorId && (creatorId.toString() === loggedInUserId.toString());
                   const targetLink = `/room/${slide.project?.projectId}?slide=${slide.slideId}`;
 
                   return (

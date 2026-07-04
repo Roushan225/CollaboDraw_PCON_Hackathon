@@ -10,6 +10,7 @@ const app = express();
 const allowedOrigins = [
   process.env.CLIENT_URL,
   "http://localhost:5173",
+  "https://collabo-draw-pcon-hackathon.vercel.app"
 ].filter(Boolean);
 
 // Allow requests from the frontend (with credentials for cookies)

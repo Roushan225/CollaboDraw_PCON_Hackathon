@@ -10,11 +10,23 @@ const PORT = process.env.PORT || 5000;
 // Create HTTP server from Express app
 const server = http.createServer(app);
 
-// Attach Socket.io to the same server
+// Attach Socket.io to the server with matching dynamic CORS origins
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "*",
+    origin: function (origin, callback) {
+      const allowed = [
+        process.env.CLIENT_URL,
+        "http://localhost:5173",
+        "https://collabo-draw-pcon-hackathon.vercel.app"
+      ].filter(Boolean);
+      if (!origin || allowed.indexOf(origin) !== -1 || origin.startsWith("http://localhost:")) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     methods: ["GET", "POST"],
+    credentials: true,
   },
 });
 

@@ -396,7 +396,9 @@ export default function DrawingRoom() {
     );
   }
 
-  const isCreator = project.creator?._id === user?.id || project.creator === user?.id;
+  const loggedInUserId = user?._id || user?.id;
+  const creatorId = project?.creator?._id || project?.creator;
+  const isCreator = loggedInUserId && creatorId && (creatorId.toString() === loggedInUserId.toString());
 
   // Theme variables colors
   const bgClass = isDark ? "bg-[#0b0b0d] text-white" : "bg-[#f5f5f7] text-neutral-900";

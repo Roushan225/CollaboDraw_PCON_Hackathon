@@ -87,7 +87,13 @@ const saveProjectDrawing = async (req, res) => {
       return res.status(400).json({ success: false, message: "slideId is required" });
     }
 
-    if (!drawingData || !drawingData.store) {
+    const normalizedDrawingData = drawingData?.store
+      ? drawingData
+      : drawingData?.document?.store
+        ? drawingData.document
+        : null;
+
+    if (!normalizedDrawingData) {
       return res.status(400).json({ success: false, message: "Valid drawingData is required and cannot be null" });
     }
 
@@ -109,7 +115,7 @@ const saveProjectDrawing = async (req, res) => {
       return res.status(404).json({ success: false, message: "Slide not found" });
     }
 
-    slide.drawingData = drawingData;
+    slide.drawingData = normalizedDrawingData;
     project.markModified("slides");
     await project.save();
 

@@ -3,7 +3,6 @@ import {
   Tldraw,
   createTLStore,
   loadSnapshot,
-  getSnapshot,
   defaultShapeUtils,
   defaultBindingUtils,
   DefaultColorStyle,
@@ -56,6 +55,8 @@ const tutorialStyles = `
   }
 `;
 
+const AUTOSAVE_DELAY_MS = 300;
+
 /**
  * Canvas — powered by tldraw with pre-populated store pattern (official tldraw persistence approach).
  * 
@@ -71,6 +72,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
   const isDark = theme === "dark";
   const saveTimeoutRef = useRef(null);
   const editorRef = useRef(null); // Use ref instead of state — avoids re-render on mount
+  const [isEditorReady, setIsEditorReady] = useState(false); // Triggers effects that depend on editorRef
 
   // Custom style panel tracking for shape formatting
   const [activeStyles, setActiveStyles] = useState({
@@ -324,9 +326,9 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
           if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
           saveTimeoutRef.current = setTimeout(() => {
             saveTimeoutRef.current = null; // Clear ref after firing
-            const snapshot = getSnapshot(editor.store);
+            const snapshot = editor.store.getStoreSnapshot();
             onDrawEnd(snapshot, slideId);
-          }, 1500);
+          }, AUTOSAVE_DELAY_MS);
         }
       },
       { scope: "all", source: "user" }
@@ -362,14 +364,14 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = null;
         try {
-          const snapshot = getSnapshot(editor.store);
+          const snapshot = editor.store.getStoreSnapshot();
           onDrawEnd(snapshot, slideId);
         } catch (e) {
           console.warn("Could not extract snapshot on unmount", e);
         }
       }
     };
-  }, [store, slideId, roomId, socketRef, onDrawEnd]);
+  }, [store, slideId, roomId, socketRef, onDrawEnd, isEditorReady]);
 
   // ─── Sync active tool indicator ───────────────────────────────────────────
   useEffect(() => {
@@ -929,6 +931,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         }}
         onMount={(editorInstance) => {
           editorRef.current = editorInstance;
+          setIsEditorReady(true);
 
           // Apply theme and user display name preferences
           editorInstance.user.updateUserPreferences({

@@ -85,28 +85,23 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
     if (!editor) return;
 
     // 1. Get from current selection first
-    let color = editor.sharedStyles?.get?.(DefaultColorStyle)?.value;
-    let size = editor.sharedStyles?.get?.(DefaultSizeStyle)?.value;
-    let dash = editor.sharedStyles?.get?.(DefaultDashStyle)?.value;
-    let fill = editor.sharedStyles?.get?.(DefaultFillStyle)?.value;
+    const sharedStyles = editor.getSharedStyles();
+    let color = sharedStyles.get(DefaultColorStyle);
+    let size = sharedStyles.get(DefaultSizeStyle);
+    let dash = sharedStyles.get(DefaultDashStyle);
+    let fill = sharedStyles.get(DefaultFillStyle);
+
+    // If it returns an object with a 'value' property, extract it
+    if (color && typeof color === 'object' && 'value' in color) color = color.value;
+    if (size && typeof size === 'object' && 'value' in size) size = size.value;
+    if (dash && typeof dash === 'object' && 'value' in dash) dash = dash.value;
+    if (fill && typeof fill === 'object' && 'value' in fill) fill = fill.value;
 
     // 2. Fallback to active styles for next shapes if selection is empty
-    if (color === undefined) {
-      const active = editor.activeStyles?.get?.(DefaultColorStyle);
-      color = typeof active === 'object' && active !== null ? active.value : active;
-    }
-    if (size === undefined) {
-      const active = editor.activeStyles?.get?.(DefaultSizeStyle);
-      size = typeof active === 'object' && active !== null ? active.value : active;
-    }
-    if (dash === undefined) {
-      const active = editor.activeStyles?.get?.(DefaultDashStyle);
-      dash = typeof active === 'object' && active !== null ? active.value : active;
-    }
-    if (fill === undefined) {
-      const active = editor.activeStyles?.get?.(DefaultFillStyle);
-      fill = typeof active === 'object' && active !== null ? active.value : active;
-    }
+    if (color === undefined) color = editor.getStyleForNextShape(DefaultColorStyle);
+    if (size === undefined) size = editor.getStyleForNextShape(DefaultSizeStyle);
+    if (dash === undefined) dash = editor.getStyleForNextShape(DefaultDashStyle);
+    if (fill === undefined) fill = editor.getStyleForNextShape(DefaultFillStyle);
 
     setActiveStyles({
       color: color || 'black',
@@ -226,10 +221,11 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
 
         loadSnapshot(newStore, {
           ...lines,
+          schema: newStore.schema.serialize(), // Force current schema to bypass brittle migrations
           store: sanitizedStore,
         });
       } catch (err) {
-        console.warn("Could not load snapshot for slide, starting fresh:", err?.message);
+        console.warn("Could not load snapshot for slide, starting fresh. Error:", err);
       }
     }
 
@@ -246,23 +242,10 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
   const dragStart = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Draggable style panel state (persisted per room)
-  const [stylePanelPos, setStylePanelPos] = useState(() => {
-    const saved = localStorage.getItem(`style-panel-pos-${roomId}`);
-    // Default style panel placement: top right of screen, offset to clear header
-    return saved ? JSON.parse(saved) : { x: window.innerWidth - 248, y: 120 };
-  });
-  const stylePanelDragStart = useRef(null);
-  const [isStylePanelDragging, setIsStylePanelDragging] = useState(false);
-
-  // Save toolbar and style panel positions
+  // Save toolbar positions
   useEffect(() => {
     localStorage.setItem(`toolbar-pos-${roomId}`, JSON.stringify(toolbarPos));
   }, [toolbarPos, roomId]);
-
-  useEffect(() => {
-    localStorage.setItem(`style-panel-pos-${roomId}`, JSON.stringify(stylePanelPos));
-  }, [stylePanelPos, roomId]);
 
   // Drag handlers for Toolbar
   const handleMouseDown = (e) => {
@@ -281,30 +264,6 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
     const handleMouseUp = () => {
       dragStart.current = null;
       setIsDragging(false);
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  };
-
-  // Drag handlers for Style Panel
-  const handleStylePanelMouseDown = (e) => {
-    e.preventDefault();
-    stylePanelDragStart.current = {
-      startX: e.clientX - stylePanelPos.x,
-      startY: e.clientY - stylePanelPos.y,
-    };
-    setIsStylePanelDragging(true);
-    const handleMouseMove = (event) => {
-      if (!stylePanelDragStart.current) return;
-      const newX = Math.max(10, Math.min(window.innerWidth - 240, event.clientX - stylePanelDragStart.current.startX));
-      const newY = Math.max(10, Math.min(window.innerHeight - 450, event.clientY - stylePanelDragStart.current.startY));
-      setStylePanelPos({ x: newX, y: newY });
-    };
-    const handleMouseUp = () => {
-      stylePanelDragStart.current = null;
-      setIsStylePanelDragging(false);
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
@@ -826,138 +785,130 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         components={{
           StylePanel: () => (
             <div
-              className="fixed z-[100] flex flex-col items-start select-none transition-transform duration-300 ease-in-out"
+              className={`fixed z-[100] top-[70px] right-4 sm:right-6 w-full max-w-[280px] sm:w-[280px] p-4 rounded-2xl shadow-2xl backdrop-blur-2xl border transition-all duration-300 ease-out select-none flex flex-col gap-5 ${
+                isDark 
+                  ? "bg-[#111113]/80 border-white/10 text-white shadow-black/50" 
+                  : "bg-white/90 border-neutral-200 text-neutral-800 shadow-neutral-200/50"
+              }`}
               style={{
-                left: `${stylePanelPos.x}px`,
-                top: `${stylePanelPos.y}px`,
                 pointerEvents: "all",
                 transform: isChatOpen ? "translateX(-320px)" : "translateX(0px)",
               }}
             >
-              {/* Drag Handle */}
-              <div
-                onMouseDown={handleStylePanelMouseDown}
-                className={`w-[224px] h-5 rounded-t-xl flex items-center justify-center border-t border-x cursor-grab active:cursor-grabbing transition-colors ${
-                  isDark ? "bg-[#141416] border-white/10 text-white/30 hover:text-white/60" : "bg-white border-neutral-200 text-neutral-400 hover:text-neutral-600"
-                } ${isStylePanelDragging ? "cursor-grabbing" : ""}`}
-              >
-                <svg width="14" height="4" viewBox="0 0 14 4" fill="currentColor">
-                  <circle cx="2" cy="2" r="1" /><circle cx="7" cy="2" r="1" /><circle cx="12" cy="2" r="1" />
-                </svg>
+              {/* Header */}
+              <div className="flex items-center justify-between pb-2 border-b border-inherit/10">
+                <h3 className="text-xs font-bold uppercase tracking-widest opacity-80">Style</h3>
               </div>
 
-              {/* Rebuilt Custom Style Panel Body */}
-              <div className={`w-[224px] border p-3.5 rounded-b-xl backdrop-blur-xl flex flex-col gap-4 ${
-                isDark ? "bg-[#141416]/95 border-white/10 text-white" : "bg-white/95 border-neutral-200 text-neutral-800"
-              }`}>
-                {/* 1. Color Grid */}
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-40">Color</span>
-                  <div className="grid grid-cols-5 gap-2">
-                    {[
-                      { id: "black", value: "#1e293b" },
-                      { id: "grey", value: "#64748b" },
-                      { id: "red", value: "#ef4444" },
-                      { id: "orange", value: "#f97316" },
-                      { id: "yellow", value: "#eab308" },
-                      { id: "green", value: "#22c55e" },
-                      { id: "light-blue", value: "#06b6d4" },
-                      { id: "blue", value: "#3b82f6" },
-                      { id: "violet", value: "#8b5cf6" },
-                      { id: "pink", value: "#ec4899" }
-                    ].map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => setStyle(DefaultColorStyle, c.id)}
-                        className={`w-7 h-7 rounded-full border-2 transition-all relative flex items-center justify-center ${
-                          activeStyles.color === c.id 
-                            ? "border-[#007aff] scale-110 shadow-lg" 
-                            : "border-transparent hover:scale-105"
-                        }`}
-                        style={{ backgroundColor: c.value }}
-                        title={c.id}
-                      >
-                        {activeStyles.color === c.id && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
+              {/* 1. Color Grid */}
+              <div className="flex flex-col gap-2.5">
+                <span className={`text-[10px] font-semibold tracking-wide ${isDark ? "text-white/40" : "text-neutral-400"}`}>Color</span>
+                <div className="grid grid-cols-5 gap-2.5">
+                  {[
+                    { id: "black", value: "#1e293b" },
+                    { id: "grey", value: "#64748b" },
+                    { id: "red", value: "#ef4444" },
+                    { id: "orange", value: "#f97316" },
+                    { id: "yellow", value: "#eab308" },
+                    { id: "green", value: "#22c55e" },
+                    { id: "light-blue", value: "#06b6d4" },
+                    { id: "blue", value: "#3b82f6" },
+                    { id: "violet", value: "#8b5cf6" },
+                    { id: "pink", value: "#ec4899" }
+                  ].map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => setStyle(DefaultColorStyle, c.id)}
+                      className={`w-8 h-8 rounded-xl border-[2.5px] transition-all duration-200 relative flex items-center justify-center hover:scale-110 active:scale-95 ${
+                        activeStyles.color === c.id 
+                          ? isDark ? "border-white shadow-[0_0_12px_rgba(255,255,255,0.3)]" : "border-neutral-900 shadow-md" 
+                          : "border-transparent shadow-sm"
+                      }`}
+                      style={{ backgroundColor: c.value }}
+                      title={c.id}
+                    >
+                      {activeStyles.color === c.id && (
+                        <div className={`w-2 h-2 rounded-full ${c.id === 'black' && !isDark ? 'bg-white/80' : 'bg-white'} shadow-sm`} />
+                      )}
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                {/* 2. Size Section */}
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-40">Size</span>
-                  <div className="flex bg-neutral-500/10 rounded-lg p-0.5 w-full">
-                    {[
-                      { id: "s", label: "S" },
-                      { id: "m", label: "M" },
-                      { id: "l", label: "L" },
-                      { id: "xl", label: "XL" }
-                    ].map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => setStyle(DefaultSizeStyle, s.id)}
-                        className={`flex-1 text-[10px] font-bold py-1 rounded-md transition-all ${
-                          activeStyles.size === s.id
-                            ? "bg-[#007aff] text-white shadow-sm"
-                            : isDark ? "text-white/60 hover:bg-white/5" : "text-neutral-600 hover:bg-black/5"
-                        }`}
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
+              {/* 2. Stroke / Size Section */}
+              <div className="flex flex-col gap-2.5">
+                <span className={`text-[10px] font-semibold tracking-wide ${isDark ? "text-white/40" : "text-neutral-400"}`}>Stroke</span>
+                <div className={`flex rounded-xl p-1 gap-1 ${isDark ? "bg-white/5" : "bg-neutral-100"}`}>
+                  {[
+                    { id: "s", label: "S", weight: "2px" },
+                    { id: "m", label: "M", weight: "4px" },
+                    { id: "l", label: "L", weight: "6px" },
+                    { id: "xl", label: "XL", weight: "8px" }
+                  ].map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => setStyle(DefaultSizeStyle, s.id)}
+                      className={`flex-1 flex flex-col items-center justify-center gap-1.5 h-10 rounded-lg transition-all text-[9px] font-bold ${
+                        activeStyles.size === s.id
+                          ? isDark ? "bg-white/10 text-white shadow-sm" : "bg-white text-black shadow-sm"
+                          : isDark ? "text-white/50 hover:bg-white/5 hover:text-white" : "text-neutral-500 hover:bg-black/5 hover:text-black"
+                      }`}
+                    >
+                      <div className="w-4 rounded-full bg-current" style={{ height: s.weight }} />
+                      {s.label}
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                {/* 3. Dash Section */}
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-40">Dash</span>
-                  <div className="flex bg-neutral-500/10 rounded-lg p-0.5 w-full">
-                    {[
-                      { id: "draw", label: "Draw" },
-                      { id: "solid", label: "Solid" },
-                      { id: "dashed", label: "Dash" },
-                      { id: "dotted", label: "Dot" }
-                    ].map((d) => (
-                      <button
-                        key={d.id}
-                        onClick={() => setStyle(DefaultDashStyle, d.id)}
-                        className={`flex-1 text-[10px] font-bold py-1 rounded-md transition-all ${
-                          activeStyles.dash === d.id
-                            ? "bg-[#007aff] text-white shadow-sm"
-                            : isDark ? "text-white/60 hover:bg-white/5" : "text-neutral-600 hover:bg-black/5"
-                        }`}
-                      >
-                        {d.label}
-                      </button>
-                    ))}
-                  </div>
+              {/* 3. Dash Section */}
+              <div className="flex flex-col gap-2.5">
+                <span className={`text-[10px] font-semibold tracking-wide ${isDark ? "text-white/40" : "text-neutral-400"}`}>Line Style</span>
+                <div className={`flex rounded-xl p-1 gap-1 ${isDark ? "bg-white/5" : "bg-neutral-100"}`}>
+                  {[
+                    { id: "draw", label: "Draw", render: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14c2-2 4-4 8-4s6 2 8 4"/></svg> },
+                    { id: "solid", label: "Solid", render: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12h16"/></svg> },
+                    { id: "dashed", label: "Dash", render: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12h3M10 12h4M17 12h3"/></svg> },
+                    { id: "dotted", label: "Dot", render: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg> }
+                  ].map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => setStyle(DefaultDashStyle, d.id)}
+                      className={`flex-1 flex items-center justify-center h-10 rounded-lg transition-all ${
+                        activeStyles.dash === d.id
+                          ? isDark ? "bg-white/10 text-white shadow-sm" : "bg-white text-black shadow-sm"
+                          : isDark ? "text-white/50 hover:bg-white/5 hover:text-white" : "text-neutral-500 hover:bg-black/5 hover:text-black"
+                      }`}
+                      title={d.label}
+                    >
+                      {d.render}
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                {/* 4. Fill Section */}
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-40">Fill</span>
-                  <div className="flex bg-neutral-500/10 rounded-lg p-0.5 w-full">
-                    {[
-                      { id: "none", label: "None" },
-                      { id: "semi", label: "Semi" },
-                      { id: "solid", label: "Solid" },
-                      { id: "pattern", label: "Pat" }
-                    ].map((f) => (
-                      <button
-                        key={f.id}
-                        onClick={() => setStyle(DefaultFillStyle, f.id)}
-                        className={`flex-1 text-[10px] font-bold py-1 rounded-md transition-all ${
-                          activeStyles.fill === f.id
-                            ? "bg-[#007aff] text-white shadow-sm"
-                            : isDark ? "text-white/60 hover:bg-white/5" : "text-neutral-600 hover:bg-black/5"
-                        }`}
-                      >
-                        {f.label}
-                      </button>
-                    ))}
-                  </div>
+              {/* 4. Fill Section */}
+              <div className="flex flex-col gap-2.5">
+                <span className={`text-[10px] font-semibold tracking-wide ${isDark ? "text-white/40" : "text-neutral-400"}`}>Fill</span>
+                <div className={`flex rounded-xl p-1 gap-1 ${isDark ? "bg-white/5" : "bg-neutral-100"}`}>
+                  {[
+                    { id: "none", label: "None" },
+                    { id: "semi", label: "Semi" },
+                    { id: "solid", label: "Solid" },
+                    { id: "pattern", label: "Pattern" }
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setStyle(DefaultFillStyle, f.id)}
+                      className={`flex-1 text-[10px] font-bold h-9 rounded-lg transition-all ${
+                        activeStyles.fill === f.id
+                          ? isDark ? "bg-white/10 text-white shadow-sm" : "bg-white text-black shadow-sm"
+                          : isDark ? "text-white/50 hover:bg-white/5 hover:text-white" : "text-neutral-500 hover:bg-black/5 hover:text-black"
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>

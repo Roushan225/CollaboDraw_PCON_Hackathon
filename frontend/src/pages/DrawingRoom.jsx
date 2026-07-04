@@ -268,16 +268,20 @@ export default function DrawingRoom() {
     return `Active ${diffDays}d ago`;
   }, [onlineUsers]);
 
+  // Primitives for dependency array to prevent infinite loop re-renders
+  const userId = user?._id || user?.id;
+  const username = user?.username || "Anonymous";
+
   // Handle Socket.io connections & synchronization events
   useEffect(() => {
     const socket = socketRef.current;
-    if (!socket || !project) return;
+    if (!socket) return; // 'project' removed from deps to prevent fetch loop
 
     // Join room broadcasting our user ID and username
     const joinPayload = {
       roomId,
-      userId: user?._id || user?.id,
-      username: user?.username || "Anonymous"
+      userId,
+      username
     };
     socket.emit("join-room", joinPayload);
 
@@ -311,13 +315,15 @@ export default function DrawingRoom() {
     socket.on("update-slides", (updatedSlides) => {
       setSlides(updatedSlides);
       
-      const stillExists = updatedSlides.some(s => s.slideId === activeSlideId);
+      const currentActiveSlideId = activeSlideIdRef.current;
+      const stillExists = updatedSlides.some(s => s.slideId === currentActiveSlideId);
       if (!stillExists && updatedSlides.length > 0) {
         const fallback = updatedSlides[0];
         setActiveSlideId(fallback.slideId);
+        activeSlideIdRef.current = fallback.slideId;
         setLines(fallback.drawingData || null);
       } else {
-        const activeObj = updatedSlides.find(s => s.slideId === activeSlideId);
+        const activeObj = updatedSlides.find(s => s.slideId === currentActiveSlideId);
         if (activeObj) setLines(activeObj.drawingData || null);
       }
     });
@@ -325,6 +331,7 @@ export default function DrawingRoom() {
     // Remote user switched slide
     socket.on("switch-slide", ({ slideId }) => {
       setActiveSlideId(slideId);
+      activeSlideIdRef.current = slideId;
       setSlides(currSlides => {
         const slideObj = currSlides.find(s => s.slideId === slideId);
         if (slideObj) setLines(slideObj.drawingData || null);
@@ -334,7 +341,7 @@ export default function DrawingRoom() {
 
     // Remote user synced drawing canvas snapshot
     socket.on("sync-canvas", ({ slideId: incomingSlideId, canvasData }) => {
-      if (incomingSlideId === activeSlideId) {
+      if (incomingSlideId === activeSlideIdRef.current) {
         setLines(canvasData);
       }
       setSlides(prev => prev.map(s => {
@@ -354,7 +361,8 @@ export default function DrawingRoom() {
       socket.off("switch-slide");
       socket.off("sync-canvas");
     };
-  }, [roomId, socketRef, project, activeSlideId, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, socketRef, userId, username]);
 
   // Switch slide helper
   const handleSwitchSlide = (slideId) => {

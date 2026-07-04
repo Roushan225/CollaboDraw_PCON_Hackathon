@@ -6,7 +6,18 @@ const useSocket = () => {
   const socketRef = useRef(null);
 
   if (!socketRef.current) {
-    const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
+    let SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
+
+    // Dynamically rewrite localhost to the actual IP address if accessing from another device in dev network
+    if (
+      import.meta.env.DEV &&
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1" &&
+      SOCKET_URL.includes("localhost")
+    ) {
+      SOCKET_URL = SOCKET_URL.replace("localhost", window.location.hostname);
+    }
+
     socketRef.current = io(SOCKET_URL, {
       transports: ["websocket"],
     });

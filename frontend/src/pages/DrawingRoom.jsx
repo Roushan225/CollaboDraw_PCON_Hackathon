@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import Canvas from "../components/Canvas";
 import useSocket from "../hooks/useSocket";
@@ -157,6 +157,7 @@ export default function DrawingRoom() {
   // Slides details
   const [slides, setSlides] = useState([]);
   const [activeSlideId, setActiveSlideId] = useState("");
+  const activeSlideIdRef = useRef(""); // Always up-to-date ref for use inside stale closures
 
   // Drawing state (Now represented as Tldraw store snapshots)
   const [lines, setLines] = useState(null);
@@ -195,9 +196,11 @@ export default function DrawingRoom() {
           // Check if custom slide query param is passed and valid
           const targetSlide = proj.slides.find(s => s.slideId === querySlideId);
           if (targetSlide) {
+            activeSlideIdRef.current = targetSlide.slideId;
             setActiveSlideId(targetSlide.slideId);
             setLines(targetSlide.drawingData || null);
           } else {
+            activeSlideIdRef.current = proj.slides[0].slideId;
             setActiveSlideId(proj.slides[0].slideId);
             setLines(proj.slides[0].drawingData || null);
           }
@@ -294,6 +297,7 @@ export default function DrawingRoom() {
 
   // Switch slide helper
   const handleSwitchSlide = (slideId) => {
+    activeSlideIdRef.current = slideId;
     setActiveSlideId(slideId);
     const targetSlide = slides.find(s => s.slideId === slideId);
     setLines(targetSlide ? targetSlide.drawingData || null : null);
@@ -348,19 +352,20 @@ export default function DrawingRoom() {
   };
 
   // Autosave active slide drawing snapshot back to Mongo
+  // Uses activeSlideIdRef to avoid stale closure capturing wrong slideId
   const saveDrawingToBackend = async (updatedSnapshot) => {
+    const currentSlideId = activeSlideIdRef.current;
+    if (!currentSlideId) return;
     try {
       await api.post(`/projects/${roomId}/save`, {
-        slideId: activeSlideId,
+        slideId: currentSlideId,
         drawingData: updatedSnapshot,
       });
 
-      // Update active lines state locally to prevent stale state revert loops
-      setLines(updatedSnapshot);
-
-      // Update local slide drawing data array immediately for card rendering
+      // ONLY update the slide card preview — do NOT call setLines() here.
+      // Calling setLines would re-trigger Canvas useEffect → loadSnapshot → store change → save loop.
       setSlides(prev => prev.map(s => {
-        if (s.slideId === activeSlideId) {
+        if (s.slideId === currentSlideId) {
           return { ...s, drawingData: updatedSnapshot };
         }
         return s;

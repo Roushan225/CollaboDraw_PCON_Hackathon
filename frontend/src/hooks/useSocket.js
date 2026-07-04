@@ -10,7 +10,9 @@ const useSocket = () => {
     const SOCKET_URL =
       import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
 
-    socketRef.current = io(SOCKET_URL);
+    socketRef.current = io(SOCKET_URL, {
+      transports: ["websocket"],
+    });
 
     // Cleanup on component unmount
     return () => {

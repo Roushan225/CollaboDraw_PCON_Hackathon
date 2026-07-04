@@ -56,10 +56,40 @@ const tutorialStyles = `
  * 
  * When slideId changes, useMemo creates a fresh store pre-populated with that slide's data.
  */
-function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme }) {
+function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpen, isInviteOpen }) {
   const isDark = theme === "dark";
   const saveTimeoutRef = useRef(null);
   const editorRef = useRef(null); // Use ref instead of state — avoids re-render on mount
+
+  // Active states
+  const [activeTool, setActiveTool] = useState("select");
+  const [hoveredTool, setHoveredTool] = useState(null);
+
+  const tools = [
+    { id: "select", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 4l12 7.2-7 1.8 5 5-2 2-5-5-1.8 7z"/></svg> },
+    { id: "hand", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v5"/><path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M6 14v-1.5a1.5 1.5 0 0 0-3 0V18a6 6 0 0 0 6 6h4a6 6 0 0 0 6-6v-3"/></svg> },
+    { id: "draw", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> },
+    { id: "eraser", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m20 20-6.05-6.05"/><path d="M10 20v-5"/><path d="M17 17v-4"/><path d="M4 20h6"/><path d="M18.8 4.2a2.4 2.4 0 0 0-3.4 0l-12 12a2.4 2.4 0 0 0 0 3.4l1.6 1.6a2.4 2.4 0 0 0 3.4 0l12-12a2.4 2.4 0 0 0 0-3.4Z"/></svg> },
+    { id: "arrow", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg> },
+    { id: "line", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="20" x2="20" y2="4"/></svg> },
+    { id: "text", icon: <span className="font-extrabold text-sm select-none">T</span> },
+    { id: "note", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8.5L15.5 3Z"/><path d="M15 3v6h6"/></svg> },
+    { id: "rectangle", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg> },
+    { id: "ellipse", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/></svg> },
+    { id: "triangle", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12,3 2,21 22,21"/></svg> },
+    { id: "frame", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg> },
+    { id: "laser", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> },
+  ];
+
+  // Calculate dynamic top offset for hovered tool card preview
+  const hoveredIdx = tools.findIndex((t) => t.id === hoveredTool);
+  const activeHoveredIndex = hoveredIdx >= 0 
+    ? hoveredIdx 
+    : (hoveredTool === "undo" ? tools.length : (hoveredTool === "redo" ? tools.length + 1 : 0));
+  
+  // 20px (drag handle) + 8px (padding) + index * 38px (button height + gap) + 10px if it's undo/redo (for separator)
+  const isUndoRedo = hoveredTool === "undo" || hoveredTool === "redo";
+  const tooltipTop = 28 + (activeHoveredIndex * 38) + (isUndoRedo ? 10 : 0);
 
   // ─── CORE: Create a pre-populated store each time the slide changes ────────
   // This is the official tldraw pattern: build the store with data BEFORE mounting.
@@ -91,10 +121,6 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme }) {
   });
   const dragStart = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
-
-  // Active states
-  const [activeTool, setActiveTool] = useState("select");
-  const [hoveredTool, setHoveredTool] = useState(null);
 
   // Save toolbar position
   useEffect(() => {
@@ -394,6 +420,10 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme }) {
           box-shadow: none !important;
           z-index: 99 !important;
         }
+        .tlui-style-panel {
+          transform: translate(${isChatOpen ? "-320px" : "0px"}, ${isInviteOpen ? "220px" : "0px"}) !important;
+          transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
       `}} />
 
       {/* Draggable Toolbar */}
@@ -417,21 +447,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme }) {
         <div className={`w-12 border p-2 flex flex-col gap-1.5 items-center rounded-b-xl ${
           isDark ? "bg-[#141416] border-white/10 text-white" : "bg-white border-neutral-200 text-neutral-800"
         }`}>
-          {[
-            { id: "select", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 4l12 7.2-7 1.8 5 5-2 2-5-5-1.8 7z"/></svg> },
-            { id: "hand", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v5"/><path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M6 14v-1.5a1.5 1.5 0 0 0-3 0V18a6 6 0 0 0 6 6h4a6 6 0 0 0 6-6v-3"/></svg> },
-            { id: "draw", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> },
-            { id: "eraser", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m20 20-6.05-6.05"/><path d="M10 20v-5"/><path d="M17 17v-4"/><path d="M4 20h6"/><path d="M18.8 4.2a2.4 2.4 0 0 0-3.4 0l-12 12a2.4 2.4 0 0 0 0 3.4l1.6 1.6a2.4 2.4 0 0 0 3.4 0l12-12a2.4 2.4 0 0 0 0-3.4Z"/></svg> },
-            { id: "arrow", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg> },
-            { id: "line", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="20" x2="20" y2="4"/></svg> },
-            { id: "text", icon: <span className="font-extrabold text-sm select-none">T</span> },
-            { id: "note", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-8.5L15.5 3Z"/><path d="M15 3v6h6"/></svg> },
-            { id: "rectangle", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg> },
-            { id: "ellipse", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/></svg> },
-            { id: "triangle", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12,3 2,21 22,21"/></svg> },
-            { id: "frame", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg> },
-            { id: "laser", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg> },
-          ].map(({ id, icon }) => (
+          {tools.map(({ id, icon }) => (
             <button
               key={id}
               onClick={() => selectTool(id)}
@@ -472,11 +488,14 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme }) {
           </button>
         </div>
 
-        {/* Tutorial card on hover */}
+        {/* Tutorial card on hover - dynamically positioned vertically next to the hovered button */}
         {hoveredTool && toolTutorials[hoveredTool] && (
-          <div className={`absolute left-14 top-12 w-60 p-4 border rounded-2xl shadow-2xl flex flex-col gap-2.5 backdrop-blur-xl ${
-            isDark ? "bg-[#121214]/95 border-white/10 text-white" : "bg-white/95 border-neutral-200 text-neutral-800"
-          }`}>
+          <div 
+            style={{ top: `${tooltipTop}px` }}
+            className={`absolute left-14 w-60 p-4 border rounded-2xl shadow-2xl flex flex-col gap-2.5 backdrop-blur-xl transition-all duration-150 ${
+              isDark ? "bg-[#121214]/95 border-white/10 text-white" : "bg-white/95 border-neutral-200 text-neutral-800"
+            }`}
+          >
             <div>
               <h4 className="font-extrabold text-[11px] tracking-tight">{toolTutorials[hoveredTool].title}</h4>
               <p className={`text-[9px] mt-0.5 leading-relaxed ${isDark ? "text-white/50" : "text-neutral-500"}`}>
@@ -509,8 +528,14 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme }) {
 
           // Sync viewport bounds
           setTimeout(() => {
-            window.dispatchEvent(new Event("resize"));
-            editorInstance.updateViewportScreenBounds();
+            if (editorInstance && !editorInstance.isDisposed) {
+              try {
+                window.dispatchEvent(new Event("resize"));
+                editorInstance.updateViewportScreenBounds();
+              } catch (e) {
+                // ignore potential sizing errors during rapid lifecycle changes
+              }
+            }
           }, 100);
         }}
       />

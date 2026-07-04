@@ -182,6 +182,14 @@ export default function DrawingRoom() {
   const [chatTarget, setChatTarget] = useState("team"); // "team" or specific userId
   const [chatInput, setChatInput] = useState("");
   const [messages, setMessages] = useState([]);
+  const messagesEndRef = useRef(null);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, showChatPanel]);
 
   // Fetch project details and slides on load
   useEffect(() => {
@@ -236,15 +244,21 @@ export default function DrawingRoom() {
       setOnlineUsers(users);
     });
 
-    // Listen for real-time team chat messages
-    socket.on("chat-message", (msg) => {
-      setMessages((prev) => [...prev, msg]);
-    });
-
-    // Listen for real-time individual private messages
-    socket.on("private-message", (msg) => {
-      setMessages((prev) => [...prev, msg]);
-    });
+     // Listen for real-time team chat messages (with de-duplication)
+     socket.on("chat-message", (msg) => {
+       setMessages((prev) => {
+         if (prev.some((m) => m.id === msg.id)) return prev;
+         return [...prev, msg];
+       });
+     });
+ 
+     // Listen for real-time individual private messages (with de-duplication)
+     socket.on("private-message", (msg) => {
+       setMessages((prev) => {
+         if (prev.some((m) => m.id === msg.id)) return prev;
+         return [...prev, msg];
+       });
+     });
 
     // Sync slide list when modified by another user
     socket.on("update-slides", (updatedSlides) => {
@@ -418,20 +432,25 @@ export default function DrawingRoom() {
     const socket = socketRef.current;
     if (!socket) return;
 
+    const msgId = Math.random().toString(36).substring(2, 9);
     const payload = {
+      id: msgId,
       roomId,
       text: chatInput,
       senderId: user?._id || user?.id,
-      senderName: user?.username || "Anonymous"
+      senderName: user?.username || "Anonymous",
+      timestamp: new Date().toISOString(),
+      type: chatTarget === "team" ? "team" : "private",
+      receiverId: chatTarget === "team" ? undefined : chatTarget
     };
+
+    // Optimistic UI Update: append message immediately so UI is instant
+    setMessages((prev) => [...prev, payload]);
 
     if (chatTarget === "team") {
       socket.emit("send-chat-message", payload);
     } else {
-      socket.emit("send-private-message", {
-        ...payload,
-        receiverId: chatTarget
-      });
+      socket.emit("send-private-message", payload);
     }
 
     setChatInput("");
@@ -489,40 +508,9 @@ export default function DrawingRoom() {
             <h1 className="font-extrabold text-sm tracking-tight">{project.name}</h1>
             <p className={`text-[10px] ${textMutedClass}`}>ID: {project.projectId}</p>
           </div>
-        </div>
 
-        {/* Right Side: Square Slide cards row + Members & Invites */}
-        <div className="flex items-center gap-6">
-          
-          {/* Horizontal Slide Cards Row */}
-          <div className="flex items-center gap-2.5 overflow-x-auto max-w-lg py-1">
-            {slides.map((slide) => (
-              <SlidePreviewCard
-                key={slide.slideId}
-                slide={slide}
-                isActive={slide.slideId === activeSlideId}
-                onClick={() => handleSwitchSlide(slide.slideId)}
-                onDelete={slides.length > 1 ? () => handleDeleteSlide(slide.slideId) : null}
-                theme={theme}
-              />
-            ))}
+          <div className={`h-4 w-px ${isDark ? "bg-white/10" : "bg-neutral-200"}`} />
 
-            {/* Large + Icon Card to Create New Slide */}
-            <button
-              onClick={handleAddSlide}
-              className={`flex items-center justify-center w-[72px] h-[72px] rounded-xl border text-xl font-bold transition-all duration-150 ${
-                isDark
-                  ? "bg-white/5 border-white/10 hover:bg-white/10 text-white"
-                  : "bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-800 shadow-sm"
-              }`}
-              title="Add New Slide"
-            >
-              +
-            </button>
-          </div>
-
-          <div className={`h-8 w-px ${isDark ? "bg-white/15" : "bg-neutral-200"}`} />
-          
           {/* Members & Invites */}
           <div className="flex items-center gap-3">
             <div className="flex -space-x-1.5 overflow-hidden">
@@ -564,7 +552,7 @@ export default function DrawingRoom() {
                 </button>
 
                 {showInviteModal && (
-                  <div className={`absolute right-0 top-11 w-80 border rounded-2xl p-5 shadow-2xl z-30 transition-colors duration-300 ${
+                  <div className={`absolute left-0 top-11 w-80 border rounded-2xl p-5 shadow-2xl z-30 transition-colors duration-300 ${
                     isDark ? "bg-[#0d0d0f] border-white/10 text-white" : "bg-white border-neutral-200 text-neutral-900"
                   }`}>
                     <div className="flex items-center justify-between mb-1">
@@ -660,6 +648,36 @@ export default function DrawingRoom() {
             )}
           </div>
         </div>
+
+        {/* Right Side: Square Slide cards row */}
+        <div className="flex items-center gap-6">
+          {/* Horizontal Slide Cards Row */}
+          <div className="flex items-center gap-2.5 overflow-x-auto max-w-lg py-1">
+            {slides.map((slide) => (
+              <SlidePreviewCard
+                key={slide.slideId}
+                slide={slide}
+                isActive={slide.slideId === activeSlideId}
+                onClick={() => handleSwitchSlide(slide.slideId)}
+                onDelete={slides.length > 1 ? () => handleDeleteSlide(slide.slideId) : null}
+                theme={theme}
+              />
+            ))}
+
+            {/* Large + Icon Card to Create New Slide */}
+            <button
+              onClick={handleAddSlide}
+              className={`flex items-center justify-center w-[72px] h-[72px] rounded-xl border text-xl font-bold transition-all duration-150 ${
+                isDark
+                  ? "bg-white/5 border-white/10 hover:bg-white/10 text-white"
+                  : "bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-800 shadow-sm"
+              }`}
+              title="Add New Slide"
+            >
+              +
+            </button>
+          </div>
+        </div>
       </header>
 
       {/* Floating Canvas Area (Tldraw manages toolbar internally) */}
@@ -667,6 +685,7 @@ export default function DrawingRoom() {
         isDark ? "bg-[#0c0c0e]" : "bg-[#f5f5f7]"
       }`}>
         <Canvas
+          key={activeSlideId}
           socketRef={socketRef}
           roomId={roomId}
           slideId={activeSlideId}
@@ -674,12 +693,15 @@ export default function DrawingRoom() {
           setLines={setLines}
           onDrawEnd={saveDrawingToBackend}
           theme={theme}
+          isChatOpen={showChatPanel}
+          isInviteOpen={false}
         />
 
         {/* 1. FLOATING CHAT PANEL TOGGLE BUTTON */}
         <button
           onClick={() => setShowChatPanel(!showChatPanel)}
-          className={`fixed bottom-6 right-6 z-[101] w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-transform hover:scale-105 active:scale-95 ${
+          style={{ right: showChatPanel ? "344px" : "24px" }}
+          className={`fixed bottom-6 z-[101] w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 ${
             isDark ? "bg-[#007aff] text-white hover:bg-[#007aff]/90" : "bg-neutral-900 text-white hover:bg-neutral-800"
           }`}
           title="Open Collaboration Chat"
@@ -724,17 +746,20 @@ export default function DrawingRoom() {
                 }`}
               >
                 <option value="team" className={isDark ? "bg-neutral-950 text-white" : "bg-white text-neutral-800"}>📢 Team Chat (Everyone)</option>
-                {onlineUsers
-                  .filter(u => u.userId !== (user?._id || user?.id))
-                  .map(u => (
-                    <option
-                      key={u.userId}
-                      value={u.userId}
-                      className={isDark ? "bg-neutral-950 text-white" : "bg-white text-neutral-800"}
-                    >
-                      🔒 Private: {u.username}
-                    </option>
-                  ))
+                {project.members
+                  ?.filter(m => m._id !== (user?._id || user?.id))
+                  .map(m => {
+                    const isOnline = onlineUsers.some(u => u.userId === m._id);
+                    return (
+                      <option
+                        key={m._id}
+                        value={m._id}
+                        className={isDark ? "bg-neutral-950 text-white" : "bg-white text-neutral-800"}
+                      >
+                        🔒 Private: {m.username} {isOnline ? "(🟢 Online)" : "(⚪ Offline)"}
+                      </option>
+                    );
+                  })
                 }
               </select>
             </div>
@@ -770,22 +795,45 @@ export default function DrawingRoom() {
                   }
                 }).map((msg) => {
                   const isMe = msg.senderId === (user?._id || user?.id);
+                  const msgTime = msg.timestamp 
+                    ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
                   return (
-                    <div key={msg.id} className={`flex flex-col max-w-[80%] ${isMe ? "self-end items-end" : "self-start items-start"}`}>
-                      <span className={`text-[8px] font-bold opacity-40 mb-0.5`}>
-                        {isMe ? "You" : msg.senderName}
-                      </span>
-                      <div className={`px-3 py-2 rounded-2xl text-[11px] leading-snug break-words ${
-                        isMe
-                          ? (isDark ? "bg-[#007aff] text-white rounded-tr-none" : "bg-neutral-900 text-white rounded-tr-none")
-                          : (isDark ? "bg-white/5 text-white/95 rounded-tl-none border border-white/5" : "bg-neutral-100 text-neutral-800 rounded-tl-none border border-neutral-200")
-                      }`}>
-                        {msg.text}
+                    <div key={msg.id} className={`flex items-start gap-2.5 max-w-[85%] ${isMe ? "self-end flex-row-reverse" : "self-start"}`}>
+                      {/* Avatar for other users */}
+                      {!isMe && (
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 border uppercase ${
+                          isDark 
+                            ? "bg-white/10 border-white/10 text-white/80" 
+                            : "bg-neutral-100 border-neutral-200 text-neutral-600 shadow-sm"
+                        }`}>
+                          {msg.senderName?.[0] || "A"}
+                        </div>
+                      )}
+                      
+                      <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className={`text-[8px] font-extrabold opacity-40`}>
+                            {isMe ? "You" : msg.senderName}
+                          </span>
+                          <span className="text-[7px] opacity-25 font-medium">{msgTime}</span>
+                        </div>
+                        
+                        <div className={`px-3 py-2 rounded-2xl text-[11px] leading-relaxed break-words shadow-sm transition-all duration-150 ${
+                          isMe
+                            ? (isDark ? "bg-[#007aff] text-white rounded-tr-none" : "bg-neutral-900 text-white rounded-tr-none")
+                            : (isDark ? "bg-white/5 text-white/95 rounded-tl-none border border-white/5" : "bg-neutral-100/90 text-neutral-800 rounded-tl-none border border-neutral-200/50")
+                        }`}>
+                          {msg.text}
+                        </div>
                       </div>
                     </div>
                   );
                 })
               )}
+              {/* Dummy element for scroll anchoring */}
+              <div ref={messagesEndRef} />
             </div>
 
             {/* Input message form */}

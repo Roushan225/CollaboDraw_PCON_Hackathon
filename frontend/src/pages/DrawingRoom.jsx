@@ -508,7 +508,7 @@ export default function DrawingRoom() {
                       {/* Copy Shareable Invite Link Button */}
                       <button
                         onClick={() => {
-                          const inviteLink = `${window.location.origin}/signup?invite=${roomId}`;
+                          const inviteLink = `https://collabo-draw-pcon-hackathon.vercel.app/signup?invite=${roomId}`;
                           navigator.clipboard.writeText(inviteLink);
                           setInviteSuccess("Invite link copied to clipboard!");
                         }}

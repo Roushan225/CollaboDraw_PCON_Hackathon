@@ -56,6 +56,24 @@ const tutorialStyles = `
 `;
 
 const AUTOSAVE_DELAY_MS = 300;
+const PRESENCE_COLORS = [
+  "#007aff",
+  "#34c759",
+  "#ff9500",
+  "#ff2d55",
+  "#5856d6",
+  "#00c7be",
+  "#af52de",
+  "#ff3b30",
+];
+
+const getPresenceColor = (seed = "") => {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return PRESENCE_COLORS[hash % PRESENCE_COLORS.length];
+};
 
 /**
  * Canvas — powered by tldraw with pre-populated store pattern (official tldraw persistence approach).
@@ -72,6 +90,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
   const isDark = theme === "dark";
   const saveTimeoutRef = useRef(null);
   const editorRef = useRef(null); // Use ref instead of state — avoids re-render on mount
+  const fallbackUserIdRef = useRef(`guest-${Math.random().toString(36).slice(2, 10)}`);
   const [isEditorReady, setIsEditorReady] = useState(false); // Triggers effects that depend on editorRef
 
   // Custom style panel tracking for shape formatting
@@ -286,6 +305,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
 
         const changes = event.changes;
         let hasShapeChanges = false;
+        let hasPresenceChanges = false;
         let hasSocketChanges = false;
 
         // Scan added
@@ -293,6 +313,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
           if (record.typeName === "shape" || record.typeName === "instance_presence") {
             hasSocketChanges = true;
             if (record.typeName === "shape") hasShapeChanges = true;
+            if (record.typeName === "instance_presence") hasPresenceChanges = true;
           }
         });
 
@@ -301,6 +322,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
           if (to.typeName === "shape" || to.typeName === "instance_presence") {
             hasSocketChanges = true;
             if (to.typeName === "shape") hasShapeChanges = true;
+            if (to.typeName === "instance_presence") hasPresenceChanges = true;
           }
         });
 
@@ -309,12 +331,17 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
           if (id.startsWith("shape:") || id.startsWith("instance_presence:")) {
             hasSocketChanges = true;
             if (id.startsWith("shape:")) hasShapeChanges = true;
+            if (id.startsWith("instance_presence:")) hasPresenceChanges = true;
           }
         });
 
-        // Broadcast changes (including cursors) to collaborators instantly
+        // Broadcast cursor-only presence as volatile traffic; keep drawings reliable.
         if (hasSocketChanges) {
-          socket.emit("tldraw-change", {
+          const emitTarget = hasPresenceChanges && !hasShapeChanges && socket.volatile
+            ? socket.volatile
+            : socket;
+
+          emitTarget.emit("tldraw-change", {
             roomId,
             slideId,
             changes,
@@ -356,6 +383,26 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
 
     return () => {
       cleanupListen();
+      const ownPresenceIds = editor.store
+        .allRecords()
+        .filter((record) => (
+          record.typeName === "instance_presence" &&
+          record.userId === editor.user.getRecordId()
+        ))
+        .map((record) => record.id);
+
+      if (ownPresenceIds.length > 0) {
+        socket.emit("tldraw-change", {
+          roomId,
+          slideId,
+          changes: {
+            added: {},
+            updated: {},
+            removed: Object.fromEntries(ownPresenceIds.map((id) => [id, true])),
+          },
+        });
+      }
+
       socket.off("tldraw-change", handleRemoteChange);
       socket.off("sync-canvas", handleSyncCanvas);
       
@@ -953,7 +1000,10 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
           setIsEditorReady(true);
 
           // Apply theme and user display name preferences
+          const userId = currentUser?._id || currentUser?.id || fallbackUserIdRef.current;
           editorInstance.user.updateUserPreferences({
+            id: userId,
+            color: getPresenceColor(userId),
             colorScheme: isDark ? "dark" : "light",
             name: currentUser?.username || "Guest",
           });

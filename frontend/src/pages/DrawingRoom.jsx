@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, Link, useSearchParams } from "react-router-dom";
 import Canvas from "../components/Canvas";
 import useSocket from "../hooks/useSocket";
@@ -240,6 +240,34 @@ export default function DrawingRoom() {
     fetchProjectDetails();
   }, [roomId, querySlideId]);
 
+  // Re-fetch project details so member list updates dynamically when a new collaborator joins
+  const fetchProjectMembers = useCallback(async () => {
+    try {
+      const res = await api.get(`/projects/${roomId}`);
+      const proj = res.data.project;
+      setProject(proj);
+    } catch (err) {
+      // ignore
+    }
+  }, [roomId]);
+
+  // Format relative active time on hover
+  const formatLastActive = useCallback((member) => {
+    const isOnline = onlineUsers.some((u) => u.userId === member._id);
+    if (isOnline) return "Active Now";
+    if (!member.lastActive) return "Offline";
+
+    const diffMs = new Date() - new Date(member.lastActive);
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return "Active just now";
+    if (diffMins < 60) return `Active ${diffMins}m ago`;
+    if (diffHours < 24) return `Active ${diffHours}h ago`;
+    return `Active ${diffDays}d ago`;
+  }, [onlineUsers]);
+
   // Handle Socket.io connections & synchronization events
   useEffect(() => {
     const socket = socketRef.current;
@@ -260,6 +288,7 @@ export default function DrawingRoom() {
     // Listen for live presence updates
     socket.on("presence-update", (users) => {
       setOnlineUsers(users);
+      fetchProjectMembers();
     });
 
      // Listen for real-time team chat messages (with de-duplication)
@@ -555,17 +584,21 @@ export default function DrawingRoom() {
           {/* Members & Invites */}
           <div className="flex items-center gap-3">
             <div className="flex -space-x-1.5 overflow-hidden">
-              {project.members?.map((member, idx) => (
-                <div
-                  key={member._id || idx}
-                  title={member.username}
-                  className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                    isDark ? "bg-neutral-800 border-black text-white/80" : "bg-neutral-100 border-white text-neutral-700 shadow-sm"
-                  }`}
-                >
-                  {member.username?.[0]?.toUpperCase()}
-                </div>
-              ))}
+              {project.members?.map((member, idx) => {
+                const isOnline = onlineUsers.some((u) => u.userId === member._id);
+                const lastActiveStr = formatLastActive(member);
+                return (
+                  <div
+                    key={member._id || idx}
+                    title={`${member.username} (${isOnline ? "🟢" : "⚪"} ${lastActiveStr})`}
+                    className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[9px] font-bold shrink-0 ${
+                      isDark ? "bg-neutral-800 border-black text-white/80" : "bg-neutral-100 border-white text-neutral-700 shadow-sm"
+                    }`}
+                  >
+                    {member.username?.[0]?.toUpperCase()}
+                  </div>
+                );
+              })}
             </div>
 
             {/* Active online collaborators count presence badge */}
@@ -736,6 +769,7 @@ export default function DrawingRoom() {
           theme={theme}
           isChatOpen={showChatPanel}
           isInviteOpen={false}
+          currentUser={user}
         />
 
         {/* 1. FLOATING CHAT PANEL TOGGLE BUTTON */}

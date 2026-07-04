@@ -1,5 +1,6 @@
 // drawingSocket.js — handles real-time drawing, slide navigations, live presence, and WebSocket group/private chat
 const Project = require("../models/Project");
+const User = require("../models/User");
 const roomUsers = {}; // roomId -> Array of { socketId, userId, username }
 const socketRooms = {}; // socketId -> { roomId, userId, username }
 
@@ -8,7 +9,7 @@ const setupSocket = (io) => {
     console.log("User connected:", socket.id);
 
     // User joins a specific project/room with presence context
-    socket.on("join-room", (payload) => {
+    socket.on("join-room", async (payload) => {
       // Handle legacy single-string roomId payloads or object payloads
       let roomId = payload;
       let userId = socket.id;
@@ -18,6 +19,15 @@ const setupSocket = (io) => {
         roomId = payload.roomId;
         userId = payload.userId || socket.id;
         username = payload.username || "Guest";
+      }
+
+      // Update user's lastActive timestamp in database
+      if (userId && userId !== socket.id) {
+        try {
+          await User.findByIdAndUpdate(userId, { lastActive: new Date() });
+        } catch (e) {
+          // ignore
+        }
       }
 
       socket.join(roomId);
@@ -135,14 +145,23 @@ const setupSocket = (io) => {
     });
 
     // Disconnect handler
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       const info = socketRooms[socket.id];
       if (info) {
-        const { roomId, username } = info;
+        const { roomId, userId, username } = info;
         delete socketRooms[socket.id];
         if (roomUsers[roomId]) {
           roomUsers[roomId] = roomUsers[roomId].filter(u => u.socketId !== socket.id);
           io.to(roomId).emit("presence-update", roomUsers[roomId]);
+        }
+
+        // Update user's lastActive timestamp in database on disconnect
+        if (userId && userId !== socket.id) {
+          try {
+            await User.findByIdAndUpdate(userId, { lastActive: new Date() });
+          } catch (e) {
+            // ignore
+          }
         }
         console.log(`User ${username} disconnected: ${socket.id}`);
       }

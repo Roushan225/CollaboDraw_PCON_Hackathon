@@ -38,7 +38,7 @@ const getProjects = async (req, res) => {
       $or: [{ creator: req.userId }, { members: req.userId }],
     })
       .populate("creator", "username email")
-      .populate("members", "username email")
+      .populate("members", "username email lastActive")
       .sort({ createdAt: -1 });
 
     res.json({ success: true, projects });
@@ -53,7 +53,7 @@ const getProjectDetail = async (req, res) => {
     const { projectId } = req.params;
     const project = await Project.findOne({ projectId })
       .populate("creator", "username email")
-      .populate("members", "username email");
+      .populate("members", "username email lastActive");
 
     if (!project) {
       return res.status(404).json({ success: false, message: "Project not found" });
@@ -68,7 +68,7 @@ const getProjectDetail = async (req, res) => {
       await project.save();
       
       // Populate the newly updated members array
-      await project.populate("members", "username email");
+      await project.populate("members", "username email lastActive");
     }
 
     res.json({ success: true, project });
@@ -148,7 +148,7 @@ const inviteMember = async (req, res) => {
 
     const updatedProject = await Project.findOne({ projectId })
       .populate("creator", "username email")
-      .populate("members", "username email");
+      .populate("members", "username email lastActive");
 
     res.json({ success: true, message: `Successfully invited ${userToInvite.username}`, project: updatedProject });
   } catch (error) {

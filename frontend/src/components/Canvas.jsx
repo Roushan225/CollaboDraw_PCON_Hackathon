@@ -56,7 +56,7 @@ const tutorialStyles = `
  * 
  * When slideId changes, useMemo creates a fresh store pre-populated with that slide's data.
  */
-function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpen, isInviteOpen }) {
+function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpen, isInviteOpen, currentUser }) {
   const isDark = theme === "dark";
   const saveTimeoutRef = useRef(null);
   const editorRef = useRef(null); // Use ref instead of state — avoids re-render on mount
@@ -126,6 +126,10 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         Object.entries(lines.store).forEach(([key, record]) => {
           if (record && typeof record === "object") {
             const sanitized = { ...record };
+            // Drop stale presence records to prevent old cursors from rendering
+            if (sanitized.typeName === "instance_presence") {
+              return;
+            }
             // Ensure document.meta is a valid object
             if (sanitized.typeName === "document" && !sanitized.meta) {
               sanitized.meta = {};
@@ -236,21 +240,53 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
       (event) => {
         if (event.source !== "user") return;
 
-        // Broadcast tldraw store changes to other collaborators in real-time
-        socket.emit("tldraw-change", {
-          roomId,
-          slideId,
-          changes: event.changes,
+        const changes = event.changes;
+        let hasShapeChanges = false;
+        let hasSocketChanges = false;
+
+        // Scan added
+        Object.values(changes.added).forEach((record) => {
+          if (record.typeName === "shape" || record.typeName === "instance_presence") {
+            hasSocketChanges = true;
+            if (record.typeName === "shape") hasShapeChanges = true;
+          }
         });
 
-        // Debounced autosave to MongoDB via backend API
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = setTimeout(() => {
-          const snapshot = editor.store.getSnapshot();
-          onDrawEnd(snapshot);
-        }, 1200);
+        // Scan updated
+        Object.values(changes.updated).forEach(([, to]) => {
+          if (to.typeName === "shape" || to.typeName === "instance_presence") {
+            hasSocketChanges = true;
+            if (to.typeName === "shape") hasShapeChanges = true;
+          }
+        });
+
+        // Scan removed
+        Object.keys(changes.removed).forEach((id) => {
+          if (id.startsWith("shape:") || id.startsWith("instance_presence:")) {
+            hasSocketChanges = true;
+            if (id.startsWith("shape:")) hasShapeChanges = true;
+          }
+        });
+
+        // Broadcast changes (including cursors) to collaborators instantly
+        if (hasSocketChanges) {
+          socket.emit("tldraw-change", {
+            roomId,
+            slideId,
+            changes,
+          });
+        }
+
+        // Debounced autosave to MongoDB only for canvas shape changes
+        if (hasShapeChanges) {
+          if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+          saveTimeoutRef.current = setTimeout(() => {
+            const snapshot = editor.store.getSnapshot();
+            onDrawEnd(snapshot);
+          }, 1500);
+        }
       },
-      { scope: "document", source: "user" }
+      { scope: "all", source: "user" }
     );
 
     // Receive incremental changes from collaborators
@@ -746,12 +782,11 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         onMount={(editorInstance) => {
           editorRef.current = editorInstance;
 
-          // Apply theme
+          // Apply theme and user display name preferences
           editorInstance.user.updateUserPreferences({
             colorScheme: isDark ? "dark" : "light",
+            name: currentUser?.username || "Guest",
           });
-
-          // Sync viewport bounds
           setTimeout(() => {
             if (editorInstance && !editorInstance.isDisposed) {
               try {

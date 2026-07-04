@@ -25,6 +25,15 @@ const projectSchema = new mongoose.Schema({
     name: { type: String, required: true },
     drawingData: { type: mongoose.Schema.Types.Mixed, default: {} },
   }],
+  messages: [{
+    id: { type: String, required: true },
+    text: { type: String, required: true },
+    senderId: { type: String, required: true },
+    senderName: { type: String, required: true },
+    receiverId: { type: String },
+    timestamp: { type: Date, default: Date.now },
+    type: { type: String, enum: ["team", "private"], required: true }
+  }],
   createdAt: {
     type: Date,
     default: Date.now,

@@ -1,4 +1,5 @@
 // drawingSocket.js — handles real-time drawing, slide navigations, live presence, and WebSocket group/private chat
+const Project = require("../models/Project");
 const roomUsers = {}; // roomId -> Array of { socketId, userId, username }
 const socketRooms = {}; // socketId -> { roomId, userId, username }
 
@@ -75,40 +76,59 @@ const setupSocket = (io) => {
     });
 
     // WebSocket Team/Group Chat Messages
-    socket.on("send-chat-message", ({ roomId, text, senderId, senderName }) => {
+    socket.on("send-chat-message", async (payload) => {
       const msg = {
-        id: Math.random().toString(36).substring(2, 9),
-        text,
-        senderId,
-        senderName,
-        timestamp: new Date().toISOString(),
+        id: payload.id || Math.random().toString(36).substring(2, 9),
+        text: payload.text,
+        senderId: payload.senderId,
+        senderName: payload.senderName,
+        timestamp: payload.timestamp || new Date().toISOString(),
         type: "team"
       };
-      io.to(roomId).emit("chat-message", msg);
+
+      try {
+        await Project.findOneAndUpdate(
+          { projectId: payload.roomId },
+          { $push: { messages: msg } }
+        );
+      } catch (err) {
+        console.error("Error saving team message:", err.message);
+      }
+
+      io.to(payload.roomId).emit("chat-message", msg);
     });
 
     // WebSocket Individual / Private Messages
-    socket.on("send-private-message", ({ roomId, text, senderId, senderName, receiverId }) => {
+    socket.on("send-private-message", async (payload) => {
       const msg = {
-        id: Math.random().toString(36).substring(2, 9),
-        text,
-        senderId,
-        senderName,
-        receiverId,
-        timestamp: new Date().toISOString(),
+        id: payload.id || Math.random().toString(36).substring(2, 9),
+        text: payload.text,
+        senderId: payload.senderId,
+        senderName: payload.senderName,
+        receiverId: payload.receiverId,
+        timestamp: payload.timestamp || new Date().toISOString(),
         type: "private"
       };
 
-      const users = roomUsers[roomId] || [];
+      try {
+        await Project.findOneAndUpdate(
+          { projectId: payload.roomId },
+          { $push: { messages: msg } }
+        );
+      } catch (err) {
+        console.error("Error saving private message:", err.message);
+      }
+
+      const users = roomUsers[payload.roomId] || [];
       
       // Dispatch to receiver's sockets
-      const receiverSockets = users.filter(u => u.userId === receiverId).map(u => u.socketId);
+      const receiverSockets = users.filter(u => u.userId === payload.receiverId).map(u => u.socketId);
       receiverSockets.forEach(sId => {
         io.to(sId).emit("private-message", msg);
       });
 
       // Dispatch to sender's sockets
-      const senderSockets = users.filter(u => u.userId === senderId).map(u => u.socketId);
+      const senderSockets = users.filter(u => u.userId === payload.senderId).map(u => u.socketId);
       senderSockets.forEach(sId => {
         io.to(sId).emit("private-message", msg);
       });

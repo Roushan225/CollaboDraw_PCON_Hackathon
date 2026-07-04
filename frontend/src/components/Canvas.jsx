@@ -103,7 +103,27 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
     // Load saved snapshot into the store BEFORE tldraw ever sees it
     if (lines && typeof lines === "object" && lines.store) {
       try {
-        loadSnapshot(newStore, lines);
+        // Sanitize snapshot records to avoid schema migration/validation crashes
+        const sanitizedStore = {};
+        Object.entries(lines.store).forEach(([key, record]) => {
+          if (record && typeof record === "object") {
+            const sanitized = { ...record };
+            // Ensure document.meta is a valid object
+            if (sanitized.typeName === "document" && !sanitized.meta) {
+              sanitized.meta = {};
+            }
+            // Ensure shape records have valid rotation
+            if (sanitized.typeName === "shape" && sanitized.rotation === undefined) {
+              sanitized.rotation = 0;
+            }
+            sanitizedStore[key] = sanitized;
+          }
+        });
+
+        loadSnapshot(newStore, {
+          ...lines,
+          store: sanitizedStore,
+        });
       } catch (err) {
         console.warn("Could not load snapshot for slide, starting fresh:", err?.message);
       }

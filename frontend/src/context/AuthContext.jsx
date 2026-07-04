@@ -10,7 +10,11 @@ export function AuthProvider({ children }) {
   // On app load — check if user has a valid cookie session
   useEffect(() => {
     api.get("/auth/me")
-      .then(res => setUser(res.data.user))
+      .then(res => {
+        const u = res.data.user;
+        const normalized = u ? { ...u, id: u._id || u.id, _id: u._id || u.id } : null;
+        setUser(normalized);
+      })
       .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
@@ -20,7 +24,9 @@ export function AuthProvider({ children }) {
     if (res.data.token) {
       localStorage.setItem("token", res.data.token);
     }
-    setUser(res.data.user);
+    const u = res.data.user;
+    const normalized = u ? { ...u, id: u._id || u.id, _id: u._id || u.id } : null;
+    setUser(normalized);
     return res.data;
   };
 
@@ -29,7 +35,9 @@ export function AuthProvider({ children }) {
     if (res.data.token) {
       localStorage.setItem("token", res.data.token);
     }
-    setUser(res.data.user);
+    const u = res.data.user;
+    const normalized = u ? { ...u, id: u._id || u.id, _id: u._id || u.id } : null;
+    setUser(normalized);
     return res.data;
   };
 

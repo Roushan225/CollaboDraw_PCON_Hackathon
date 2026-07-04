@@ -199,6 +199,7 @@ export default function DrawingRoom() {
         const proj = res.data.project;
         setProject(proj);
         setSlides(proj.slides || []);
+        setMessages(proj.messages || []);
         
         if (proj.slides && proj.slides.length > 0) {
           // Check if custom slide query param is passed and valid

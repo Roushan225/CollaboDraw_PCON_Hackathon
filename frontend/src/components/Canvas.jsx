@@ -3,6 +3,7 @@ import {
   Tldraw,
   createTLStore,
   loadSnapshot,
+  getSnapshot,
   defaultShapeUtils,
   defaultBindingUtils,
   DefaultColorStyle,
@@ -207,8 +208,8 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
             if (sanitized.typeName === "instance_presence") {
               return;
             }
-            // Ensure document.meta is a valid object
-            if (sanitized.typeName === "document" && !sanitized.meta) {
+            // Ensure EVERY record has a meta object (required by newer schemas)
+            if (sanitized.meta === undefined) {
               sanitized.meta = {};
             }
             // Ensure shape records have valid rotation
@@ -322,8 +323,9 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         if (hasShapeChanges) {
           if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
           saveTimeoutRef.current = setTimeout(() => {
-            const snapshot = editor.store.getSnapshot();
-            onDrawEnd(snapshot);
+            saveTimeoutRef.current = null; // Clear ref after firing
+            const snapshot = getSnapshot(editor.store);
+            onDrawEnd(snapshot, slideId);
           }, 1500);
         }
       },
@@ -354,7 +356,18 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
       cleanupListen();
       socket.off("tldraw-change", handleRemoteChange);
       socket.off("sync-canvas", handleSyncCanvas);
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      
+      // Flush any pending unsaved drawings immediately on unmount or slide switch
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+        try {
+          const snapshot = getSnapshot(editor.store);
+          onDrawEnd(snapshot, slideId);
+        } catch (e) {
+          console.warn("Could not extract snapshot on unmount", e);
+        }
+      }
     };
   }, [store, slideId, roomId, socketRef, onDrawEnd]);
 

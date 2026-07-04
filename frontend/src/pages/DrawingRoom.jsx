@@ -389,6 +389,7 @@ export default function DrawingRoom() {
       setSlides(newSlides);
       
       setActiveSlideId(res.data.slideId);
+      activeSlideIdRef.current = res.data.slideId;
       setLines(null);
 
       // Broadcast changes
@@ -409,6 +410,7 @@ export default function DrawingRoom() {
       if (activeSlideId === slideId) {
         const fallbackId = newSlides[0].slideId;
         setActiveSlideId(fallbackId);
+        activeSlideIdRef.current = fallbackId;
         const fallbackSlide = newSlides.find(s => s.slideId === fallbackId);
         setLines(fallbackSlide ? fallbackSlide.drawingData || null : null);
       }
@@ -422,8 +424,8 @@ export default function DrawingRoom() {
 
   // Autosave active slide drawing snapshot back to Mongo
   // Uses activeSlideIdRef to avoid stale closure capturing wrong slideId
-  const saveDrawingToBackend = async (updatedSnapshot) => {
-    const currentSlideId = activeSlideIdRef.current;
+  const saveDrawingToBackend = useCallback(async (updatedSnapshot, sourceSlideId) => {
+    const currentSlideId = sourceSlideId || activeSlideIdRef.current;
     if (!currentSlideId) return;
     try {
       await api.post(`/projects/${roomId}/save`, {
@@ -442,7 +444,7 @@ export default function DrawingRoom() {
     } catch (err) {
       console.error("Autosave slide error", err);
     }
-  };
+  }, [roomId]);
 
   // Search members debounced
   useEffect(() => {

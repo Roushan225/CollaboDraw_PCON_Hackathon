@@ -87,6 +87,10 @@ const saveProjectDrawing = async (req, res) => {
       return res.status(400).json({ success: false, message: "slideId is required" });
     }
 
+    if (!drawingData || !drawingData.store) {
+      return res.status(400).json({ success: false, message: "Valid drawingData is required and cannot be null" });
+    }
+
     const project = await Project.findOne({ projectId });
     if (!project) {
       return res.status(404).json({ success: false, message: "Project not found" });

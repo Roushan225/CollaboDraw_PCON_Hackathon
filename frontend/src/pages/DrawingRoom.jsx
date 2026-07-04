@@ -311,6 +311,9 @@ export default function DrawingRoom() {
         drawingData: updatedSnapshot,
       });
 
+      // Update active lines state locally to prevent stale state revert loops
+      setLines(updatedSnapshot);
+
       // Update local slide drawing data array immediately for card rendering
       setSlides(prev => prev.map(s => {
         if (s.slideId === activeSlideId) {

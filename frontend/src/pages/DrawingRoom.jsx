@@ -173,6 +173,15 @@ export default function DrawingRoom() {
   const [searchParams] = useSearchParams();
   const querySlideId = searchParams.get("slide");
 
+  // Real-time Collaborators Presence state
+  const [onlineUsers, setOnlineUsers] = useState([]);
+
+  // Real-time Chat States
+  const [showChatPanel, setShowChatPanel] = useState(false);
+  const [chatTarget, setChatTarget] = useState("team"); // "team" or specific userId
+  const [chatInput, setChatInput] = useState("");
+  const [messages, setMessages] = useState([]);
+
   // Fetch project details and slides on load
   useEffect(() => {
     const fetchProjectDetails = async () => {
@@ -207,10 +216,31 @@ export default function DrawingRoom() {
     const socket = socketRef.current;
     if (!socket || !project) return;
 
-    socket.emit("join-room", roomId);
+    // Join room broadcasting our user ID and username
+    const joinPayload = {
+      roomId,
+      userId: user?._id || user?.id,
+      username: user?.username || "Anonymous"
+    };
+    socket.emit("join-room", joinPayload);
 
     socket.on("connect", () => {
-      socket.emit("join-room", roomId);
+      socket.emit("join-room", joinPayload);
+    });
+
+    // Listen for live presence updates
+    socket.on("presence-update", (users) => {
+      setOnlineUsers(users);
+    });
+
+    // Listen for real-time team chat messages
+    socket.on("chat-message", (msg) => {
+      setMessages((prev) => [...prev, msg]);
+    });
+
+    // Listen for real-time individual private messages
+    socket.on("private-message", (msg) => {
+      setMessages((prev) => [...prev, msg]);
     });
 
     // Sync slide list when modified by another user
@@ -253,11 +283,14 @@ export default function DrawingRoom() {
 
     return () => {
       socket.off("connect");
+      socket.off("presence-update");
+      socket.off("chat-message");
+      socket.off("private-message");
       socket.off("update-slides");
       socket.off("switch-slide");
       socket.off("sync-canvas");
     };
-  }, [roomId, socketRef, project, activeSlideId]);
+  }, [roomId, socketRef, project, activeSlideId, user]);
 
   // Switch slide helper
   const handleSwitchSlide = (slideId) => {
@@ -372,6 +405,33 @@ export default function DrawingRoom() {
     }
   };
 
+  // Send message over WebSocket (Team or Private)
+  const handleSendMessage = (e) => {
+    e.preventDefault();
+    if (!chatInput.trim()) return;
+
+    const socket = socketRef.current;
+    if (!socket) return;
+
+    const payload = {
+      roomId,
+      text: chatInput,
+      senderId: user?._id || user?.id,
+      senderName: user?.username || "Anonymous"
+    };
+
+    if (chatTarget === "team") {
+      socket.emit("send-chat-message", payload);
+    } else {
+      socket.emit("send-private-message", {
+        ...payload,
+        receiverId: chatTarget
+      });
+    }
+
+    setChatInput("");
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center text-white">
@@ -457,7 +517,7 @@ export default function DrawingRoom() {
           </div>
 
           <div className={`h-8 w-px ${isDark ? "bg-white/15" : "bg-neutral-200"}`} />
-
+          
           {/* Members & Invites */}
           <div className="flex items-center gap-3">
             <div className="flex -space-x-1.5 overflow-hidden">
@@ -473,6 +533,19 @@ export default function DrawingRoom() {
                 </div>
               ))}
             </div>
+
+            {/* Active online collaborators count presence badge */}
+            {onlineUsers.length > 0 && (
+              <div 
+                className={`text-[10px] font-bold px-2.5 py-1.5 rounded-full flex items-center gap-1.5 ${
+                  isDark ? "bg-green-500/10 text-green-400 border border-green-500/20" : "bg-green-50 text-green-600 border border-green-100 shadow-sm"
+                }`}
+                title={`${onlineUsers.map(u => u.username).join(", ")} online`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                <span>{onlineUsers.length} Online</span>
+              </div>
+            )}
 
             {isCreator && (
               <div className="relative">
@@ -597,6 +670,143 @@ export default function DrawingRoom() {
           onDrawEnd={saveDrawingToBackend}
           theme={theme}
         />
+
+        {/* 1. FLOATING CHAT PANEL TOGGLE BUTTON */}
+        <button
+          onClick={() => setShowChatPanel(!showChatPanel)}
+          className={`fixed bottom-6 right-6 z-[101] w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-transform hover:scale-105 active:scale-95 ${
+            isDark ? "bg-[#007aff] text-white hover:bg-[#007aff]/90" : "bg-neutral-900 text-white hover:bg-neutral-800"
+          }`}
+          title="Open Collaboration Chat"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          {messages.length > 0 && !showChatPanel && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-extrabold w-4.5 h-4.5 rounded-full flex items-center justify-center ring-2 ring-white">
+              {messages.length}
+            </span>
+          )}
+        </button>
+
+        {/* 2. COLLAPSIBLE REAL-TIME CHAT SIDEBAR DRAWER */}
+        {showChatPanel && (
+          <div
+            className={`fixed right-0 top-24 bottom-0 w-80 border-l shadow-2xl z-[100] flex flex-col backdrop-blur-md transition-all duration-300 ${
+              isDark ? "bg-[#0c0c0e]/95 border-white/10 text-white" : "bg-white/95 border-neutral-200 text-neutral-900"
+            }`}
+          >
+            {/* Header: Select Chat Target Channel */}
+            <div className={`p-4 border-b flex flex-col gap-2 ${isDark ? "border-white/10" : "border-neutral-200"}`}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-xs tracking-tight">Collaboration Chat</h3>
+                <button
+                  onClick={() => setShowChatPanel(false)}
+                  className={`text-xs hover:scale-105 transition-transform ${isDark ? "text-white/40 hover:text-white" : "text-neutral-400 hover:text-neutral-700"}`}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Channel Selector Choice */}
+              <select
+                value={chatTarget}
+                onChange={(e) => setChatTarget(e.target.value)}
+                className={`w-full border rounded-xl px-3 py-2 text-xs font-semibold outline-none transition-all cursor-pointer ${
+                  isDark
+                    ? "bg-white/5 border-white/10 text-white focus:border-white/30"
+                    : "bg-neutral-50 border-neutral-200 text-neutral-800 focus:border-neutral-300 shadow-sm"
+                }`}
+              >
+                <option value="team" className={isDark ? "bg-neutral-950 text-white" : "bg-white text-neutral-800"}>📢 Team Chat (Everyone)</option>
+                {onlineUsers
+                  .filter(u => u.userId !== (user?._id || user?.id))
+                  .map(u => (
+                    <option
+                      key={u.userId}
+                      value={u.userId}
+                      className={isDark ? "bg-neutral-950 text-white" : "bg-white text-neutral-800"}
+                    >
+                      🔒 Private: {u.username}
+                    </option>
+                  ))
+                }
+              </select>
+            </div>
+
+            {/* Body: Messages List */}
+            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+              {messages.filter(msg => {
+                if (chatTarget === "team") {
+                  return msg.type === "team";
+                } else {
+                  // Filter private messages between logged-in user and selected collaborator
+                  const myId = user?._id || user?.id;
+                  return msg.type === "private" && (
+                    (msg.senderId === myId && msg.receiverId === chatTarget) ||
+                    (msg.senderId === chatTarget && msg.receiverId === myId)
+                  );
+                }
+              }).length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 opacity-30">
+                  <span className="text-2xl mb-1">💬</span>
+                  <p className="text-[10px]">No messages yet. Start the conversation!</p>
+                </div>
+              ) : (
+                messages.filter(msg => {
+                  if (chatTarget === "team") {
+                    return msg.type === "team";
+                  } else {
+                    const myId = user?._id || user?.id;
+                    return msg.type === "private" && (
+                      (msg.senderId === myId && msg.receiverId === chatTarget) ||
+                      (msg.senderId === chatTarget && msg.receiverId === myId)
+                    );
+                  }
+                }).map((msg) => {
+                  const isMe = msg.senderId === (user?._id || user?.id);
+                  return (
+                    <div key={msg.id} className={`flex flex-col max-w-[80%] ${isMe ? "self-end items-end" : "self-start items-start"}`}>
+                      <span className={`text-[8px] font-bold opacity-40 mb-0.5`}>
+                        {isMe ? "You" : msg.senderName}
+                      </span>
+                      <div className={`px-3 py-2 rounded-2xl text-[11px] leading-snug break-words ${
+                        isMe
+                          ? (isDark ? "bg-[#007aff] text-white rounded-tr-none" : "bg-neutral-900 text-white rounded-tr-none")
+                          : (isDark ? "bg-white/5 text-white/95 rounded-tl-none border border-white/5" : "bg-neutral-100 text-neutral-800 rounded-tl-none border border-neutral-200")
+                      }`}>
+                        {msg.text}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Input message form */}
+            <form onSubmit={handleSendMessage} className={`p-4 border-t flex gap-2 ${isDark ? "border-white/10" : "border-neutral-200"}`}>
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder={chatTarget === "team" ? "Message team..." : "Private message..."}
+                className={`flex-1 border rounded-xl px-3 py-2 text-xs outline-none transition-all ${
+                  isDark
+                    ? "bg-white/5 border-white/10 text-white focus:border-white/30"
+                    : "bg-neutral-50 border-neutral-200 text-neutral-900 focus:border-neutral-300"
+                }`}
+              />
+              <button
+                type="submit"
+                className={`px-3.5 rounded-xl text-xs font-bold active:scale-95 transition-all ${
+                  isDark ? "bg-white text-black hover:bg-white/90" : "bg-neutral-950 text-white hover:bg-neutral-800"
+                }`}
+              >
+                Send
+              </button>
+            </form>
+          </div>
+        )}
       </main>
     </div>
   );

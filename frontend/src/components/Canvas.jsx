@@ -2,11 +2,55 @@ import { useEffect, useState, useRef } from "react";
 import { Tldraw } from "tldraw";
 import "tldraw/tldraw.css";
 
-// Canvas.jsx — professional collaborative whiteboard powered by tldraw with vertical draggable toolbar containing expanded tools
+// CSS Animation Keyframes for the micro-tutorial SVGs
+const tutorialStyles = `
+  @keyframes drawTutorialLine {
+    0% { stroke-dashoffset: 100; }
+    50% { stroke-dashoffset: 0; }
+    100% { stroke-dashoffset: -100; }
+  }
+  @keyframes selectClick {
+    0%, 100% { transform: scale(1); opacity: 0.8; }
+    50% { transform: scale(1.15) translate(4px, 4px); opacity: 1; }
+  }
+  @keyframes handPan {
+    0%, 100% { transform: translateX(0px); }
+    50% { transform: translateX(8px); }
+  }
+  @keyframes eraserWipe {
+    0% { transform: translateX(-15px) rotate(0deg); opacity: 1; }
+    50% { transform: translateX(15px) rotate(15deg); opacity: 0.3; }
+    100% { transform: translateX(-15px) rotate(0deg); opacity: 1; }
+  }
+  @keyframes laserGlow {
+    0%, 100% { opacity: 0.1; stroke-width: 1.5px; }
+    50% { opacity: 1; stroke-width: 3.5px; }
+  }
+  .animate-tut-stroke {
+    stroke-dasharray: 100;
+    animation: drawTutorialLine 3s linear infinite;
+  }
+  .animate-tut-click {
+    animation: selectClick 2s ease-in-out infinite;
+    transform-origin: center;
+  }
+  .animate-tut-pan {
+    animation: handPan 2.2s ease-in-out infinite;
+  }
+  .animate-tut-eraser {
+    animation: eraserWipe 2.5s ease-in-out infinite;
+  }
+  .animate-tut-laser {
+    animation: laserGlow 1.5s ease-in-out infinite;
+  }
+`;
+
+// Canvas.jsx — professional collaborative whiteboard powered by tldraw with vertical draggable toolbar & hover-triggered SVG tutorials
 function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme }) {
   const [editor, setEditor] = useState(null);
   const saveTimeoutRef = useRef(null);
   const lastLoadedSlideIdRef = useRef(null);
+  const lastSavedSnapshotRef = useRef(null); // Prevents loading loops from local changes
 
   const isDark = theme === "dark";
 
@@ -19,8 +63,9 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
   const dragStart = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  // Active Tool state
+  // Active states
   const [activeTool, setActiveTool] = useState("select");
+  const [hoveredTool, setHoveredTool] = useState(null);
 
   // Save custom toolbar position locally
   useEffect(() => {
@@ -58,12 +103,21 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
     window.addEventListener("mouseup", handleMouseUp);
   };
 
-  // Handle active slide changed: load slide's shapes snapshot
+  // Handle active slide changed or lines fetched asynchronously: load slide's shapes snapshot
   useEffect(() => {
     if (!editor) return;
 
-    if (lastLoadedSlideIdRef.current !== slideId) {
+    // Skip loading if the incoming lines prop matches the exact snapshot we just saved locally
+    if (lines && lastSavedSnapshotRef.current === lines) {
+      return;
+    }
+
+    const isNewSlide = lastLoadedSlideIdRef.current !== slideId;
+    const isNewSnapshot = lines && lastSavedSnapshotRef.current !== lines;
+
+    if (isNewSlide || isNewSnapshot) {
       lastLoadedSlideIdRef.current = slideId;
+      lastSavedSnapshotRef.current = lines;
       
       if (lines && typeof lines === "object" && lines.store) {
         try {
@@ -113,6 +167,7 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
         }
         saveTimeoutRef.current = setTimeout(() => {
           const snapshot = editor.store.getSnapshot();
+          lastSavedSnapshotRef.current = snapshot; // Cache our saved snapshot locally
           onDrawEnd(snapshot);
         }, 1000);
       },
@@ -191,10 +246,170 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
     }
   };
 
+  // Tool Tutorial Contents with Animated SVGs
+  const toolTutorials = {
+    select: {
+      title: "Select Tool (V)",
+      desc: "Drag over shapes to select them. Click to resize, rotate, and edit parameters.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-80">
+          <rect x="25" y="10" width="40" height="25" rx="3" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3" fill="none" />
+          <g className="animate-tut-click">
+            <path d="M 55 25 L 61 31 L 58 32 L 62 39 L 60 40 L 56 33 L 53 35 Z" fill="currentColor" />
+          </g>
+        </svg>
+      ),
+    },
+    hand: {
+      title: "Hand Tool (H)",
+      desc: "Pan across the infinite drawing canvas without selecting or modifying existing shapes.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-85">
+          <g className="animate-tut-pan" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M42 22 V14 a2 2 0 0 1 4 0 v8 M46 20 V12 a2 2 0 0 1 4 0 v8 M50 21 V10 a2 2 0 0 1 4 0 v11 M54 22 V15 a2 2 0 0 1 4 0 v12" />
+            <path d="M38 24 V18 a1.5 1.5 0 0 1 3 0 v8 M38 26 C36 30 40 38 48 38 h6 C58 38 61 34 61 30 V27" />
+          </g>
+        </svg>
+      ),
+    },
+    draw: {
+      title: "Pencil / Draw (D)",
+      desc: "Draw freeform lines and sketching outlines. Integrates pressure sensitivity tracing.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-80">
+          <path d="M 20 30 Q 40 10, 60 30 T 80 15" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" className="animate-tut-stroke" />
+        </svg>
+      ),
+    },
+    eraser: {
+      title: "Eraser Tool (E)",
+      desc: "Swipe over vector paths, lines, and geometries to delete them instantly.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-80">
+          <path d="M 25 22 L 75 22" stroke="currentColor" strokeWidth="3" opacity="0.15" strokeLinecap="round" />
+          <path d="M 25 22 L 45 22" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          <g className="animate-tut-eraser" stroke="currentColor" strokeWidth="1.5" fill="none">
+            <rect x="42" y="10" width="16" height="12" rx="2" fill="currentColor" opacity="0.1" />
+          </g>
+        </svg>
+      ),
+    },
+    arrow: {
+      title: "Arrow Tool (A)",
+      desc: "Connect shapes together with dynamic path arrows. Snaps securely to outlines.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-85">
+          <circle cx="25" cy="22" r="4" fill="currentColor" />
+          <line x1="29" y1="22" x2="65" y2="22" stroke="currentColor" strokeWidth="1.8" className="animate-tut-stroke" />
+          <path d="M 60 17 L 67 22 L 60 27" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+    line: {
+      title: "Line Tool (L)",
+      desc: "Draw straight, clean segments between click-points. Lock angles with Shift.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-80">
+          <circle cx="20" cy="30" r="3" fill="currentColor" />
+          <circle cx="80" cy="15" r="3" fill="currentColor" />
+          <line x1="20" y1="30" x2="80" y2="15" stroke="currentColor" strokeWidth="2.2" className="animate-tut-stroke" />
+        </svg>
+      ),
+    },
+    text: {
+      title: "Text Block (T)",
+      desc: "Add editable rich text headers and annotations. Supports custom sizes & alignments.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-80">
+          <text x="50%" y="28" textAnchor="middle" fill="currentColor" className="font-extrabold text-sm font-sans">Title Text</text>
+          <line x1="30" y1="35" x2="70" y2="35" stroke="currentColor" strokeWidth="1.5" opacity="0.4" />
+        </svg>
+      ),
+    },
+    note: {
+      title: "Sticky Note (N)",
+      desc: "Create colored, self-resizing sticky note segments for planning and ideating.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-85">
+          <rect x="35" y="8" width="30" height="30" rx="3" fill="currentColor" opacity="0.12" stroke="currentColor" strokeWidth="1.5" />
+          <line x1="41" y1="16" x2="59" y2="16" stroke="currentColor" strokeWidth="1.5" opacity="0.4" />
+          <line x1="41" y1="22" x2="55" y2="22" stroke="currentColor" strokeWidth="1.5" opacity="0.4" />
+        </svg>
+      ),
+    },
+    rectangle: {
+      title: "Rectangle Shape (R)",
+      desc: "Insert square outline elements. Toggle fills and board borders in style card.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-85">
+          <rect x="30" y="10" width="40" height="25" rx="3" stroke="currentColor" strokeWidth="2" fill="none" className="animate-tut-stroke" />
+        </svg>
+      ),
+    },
+    ellipse: {
+      title: "Circle / Ellipse (O)",
+      desc: "Insert round geometry shapes. Use style grid to customize background fill formats.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-85">
+          <circle cx="50" cy="22" r="14" stroke="currentColor" strokeWidth="2" fill="none" className="animate-tut-stroke" />
+        </svg>
+      ),
+    },
+    triangle: {
+      title: "Triangle Shape",
+      desc: "Create geometric triangle outlines. Drag handles to stretch angles.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-85">
+          <polygon points="50,9 25,35 75,35" stroke="currentColor" strokeWidth="2" fill="none" className="animate-tut-stroke" />
+        </svg>
+      ),
+    },
+    frame: {
+      title: "Frame Container (F)",
+      desc: "Define distinct frame zones to group contents or export specific canvas regions.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-80">
+          <rect x="25" y="10" width="50" height="25" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" fill="none" />
+          <text x="29" y="18" fill="currentColor" className="text-[7px] font-bold">Frame 1</text>
+        </svg>
+      ),
+    },
+    laser: {
+      title: "Laser Pointer (X)",
+      desc: "Draw glowing temporary trails that automatically fade out in real-time.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-85">
+          <path d="M 20 22 C 35 12, 65 32, 80 22" stroke="#ff3b30" strokeWidth="2" fill="none" strokeLinecap="round" className="animate-tut-laser" />
+        </svg>
+      ),
+    },
+    undo: {
+      title: "Undo (Ctrl+Z)",
+      desc: "Revert your last canvas drawing stroke, modification, or deletion.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-80">
+          <path d="M 70 25 A 15 15 0 0 0 40 18" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+          <path d="M 45 13 L 38 18 L 45 23" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+    redo: {
+      title: "Redo (Ctrl+Y)",
+      desc: "Re-apply the last undone canvas stroke or shape edit change.",
+      svg: (
+        <svg width="100%" height="45" viewBox="0 0 100 45" className="opacity-80">
+          <path d="M 30 25 A 15 15 0 0 1 60 18" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+          <path d="M 55 13 L 62 18 L 55 23" stroke="currentColor" strokeWidth="2.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+  };
+
   return (
     <div className="absolute inset-0 overflow-hidden" style={{ background: isDark ? "#0c0c0e" : "#f5f5f7" }}>
-      {/* Hide only native toolbar and navigation zone. Keep style panel! */}
+      {/* Hide only native toolbar and navigation zone. Reposition page menu & inject tutorial keyframes */}
       <style dangerouslySetInnerHTML={{__html: `
+        ${tutorialStyles}
         .tlui-toolbar {
           display: none !important;
         }
@@ -254,6 +469,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Select Tool */}
           <button
             onClick={() => selectTool("select")}
+            onMouseEnter={() => setHoveredTool("select")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Select tool"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "select"
@@ -269,6 +486,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Hand Tool */}
           <button
             onClick={() => selectTool("hand")}
+            onMouseEnter={() => setHoveredTool("hand")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Grab / Hand tool"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "hand"
@@ -287,6 +506,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Pencil / Draw Tool */}
           <button
             onClick={() => selectTool("draw")}
+            onMouseEnter={() => setHoveredTool("draw")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Pencil draw"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "draw" || activeTool === "draw.idle"
@@ -303,6 +524,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Eraser Tool */}
           <button
             onClick={() => selectTool("eraser")}
+            onMouseEnter={() => setHoveredTool("eraser")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Eraser tool"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "eraser"
@@ -322,6 +545,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Arrow Tool */}
           <button
             onClick={() => selectTool("arrow")}
+            onMouseEnter={() => setHoveredTool("arrow")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Arrow connector"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "arrow"
@@ -338,6 +563,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Straight Line Tool */}
           <button
             onClick={() => selectTool("line")}
+            onMouseEnter={() => setHoveredTool("line")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Line tool"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "line"
@@ -353,6 +580,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Text Tool */}
           <button
             onClick={() => selectTool("text")}
+            onMouseEnter={() => setHoveredTool("text")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Text block"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "text"
@@ -366,6 +595,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Sticky Note Tool */}
           <button
             onClick={() => selectTool("note")}
+            onMouseEnter={() => setHoveredTool("note")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Sticky Note"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "note"
@@ -382,6 +613,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Rectangle Shape Tool */}
           <button
             onClick={() => selectTool("rectangle")}
+            onMouseEnter={() => setHoveredTool("rectangle")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Rectangle Shape"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "rectangle"
@@ -397,6 +630,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Ellipse Shape Tool */}
           <button
             onClick={() => selectTool("ellipse")}
+            onMouseEnter={() => setHoveredTool("ellipse")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Ellipse / Circle Shape"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "ellipse"
@@ -412,6 +647,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Triangle Shape Tool */}
           <button
             onClick={() => selectTool("triangle")}
+            onMouseEnter={() => setHoveredTool("triangle")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Triangle Shape"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "triangle"
@@ -427,6 +664,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Frame Group Tool */}
           <button
             onClick={() => selectTool("frame")}
+            onMouseEnter={() => setHoveredTool("frame")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Frame Segment"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "frame"
@@ -445,6 +684,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Laser Pointer Tool */}
           <button
             onClick={() => selectTool("laser")}
+            onMouseEnter={() => setHoveredTool("laser")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Laser pointer (temporary sketch)"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               activeTool === "laser"
@@ -463,6 +704,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Undo Action */}
           <button
             onClick={() => editor?.undo()}
+            onMouseEnter={() => setHoveredTool("undo")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Undo (Ctrl + Z)"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               isDark ? "hover:bg-white/5 text-white/70 hover:text-white" : "hover:bg-neutral-100 text-neutral-600 hover:text-neutral-900"
@@ -477,6 +720,8 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
           {/* Redo Action */}
           <button
             onClick={() => editor?.redo()}
+            onMouseEnter={() => setHoveredTool("redo")}
+            onMouseLeave={() => setHoveredTool(null)}
             title="Redo (Ctrl + Y)"
             className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
               isDark ? "hover:bg-white/5 text-white/70 hover:text-white" : "hover:bg-neutral-100 text-neutral-600 hover:text-neutral-900"
@@ -488,12 +733,34 @@ function Canvas({ socketRef, roomId, slideId, lines, setLines, onDrawEnd, theme 
             </svg>
           </button>
         </div>
+
+        {/* 2. ON HOVER: FLOATING TUTORIAL SVG CARD PANEL (Renders directly next to the hovered tool) */}
+        {hoveredTool && toolTutorials[hoveredTool] && (
+          <div
+            className={`absolute left-14 top-12 w-60 p-4 border rounded-2xl shadow-2xl flex flex-col gap-2.5 backdrop-blur-xl transition-all duration-200 animate-in fade-in slide-in-from-left-2 ${
+              isDark ? "bg-[#121214]/95 border-white/10 text-white" : "bg-white/95 border-neutral-200 text-neutral-800"
+            }`}
+          >
+            <div>
+              <h4 className="font-extrabold text-[11px] tracking-tight">{toolTutorials[hoveredTool].title}</h4>
+              <p className={`text-[9px] mt-0.5 leading-relaxed ${isDark ? "text-white/50" : "text-neutral-500"}`}>
+                {toolTutorials[hoveredTool].desc}
+              </p>
+            </div>
+            
+            {/* Animated SVG demo screen */}
+            <div className={`h-14 rounded-lg flex items-center justify-center overflow-hidden border ${
+              isDark ? "bg-white/[0.02] border-white/5" : "bg-neutral-50 border-neutral-100"
+            }`}>
+              {toolTutorials[hoveredTool].svg}
+            </div>
+          </div>
+        )}
       </div>
 
       <Tldraw
         onMount={(editorInstance) => {
           setEditor(editorInstance);
-          // Sync bounds on mount to align laser and cursor positions
           setTimeout(() => {
             window.dispatchEvent(new Event("resize"));
             editorInstance.updateViewportScreenBounds();

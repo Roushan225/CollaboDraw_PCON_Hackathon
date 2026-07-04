@@ -1,5 +1,15 @@
 import { useEffect, useState, useRef, useMemo } from "react";
-import { Tldraw, createTLStore, loadSnapshot, defaultShapeUtils, defaultBindingUtils, DefaultStylePanel } from "tldraw";
+import {
+  Tldraw,
+  createTLStore,
+  loadSnapshot,
+  defaultShapeUtils,
+  defaultBindingUtils,
+  DefaultColorStyle,
+  DefaultSizeStyle,
+  DefaultDashStyle,
+  DefaultFillStyle
+} from "tldraw";
 import "tldraw/tldraw.css";
 
 // CSS Animation Keyframes for the micro-tutorial SVGs
@@ -60,6 +70,78 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
   const isDark = theme === "dark";
   const saveTimeoutRef = useRef(null);
   const editorRef = useRef(null); // Use ref instead of state — avoids re-render on mount
+
+  // Custom style panel tracking for shape formatting
+  const [activeStyles, setActiveStyles] = useState({
+    color: 'black',
+    size: 'm',
+    dash: 'draw',
+    fill: 'none',
+  });
+
+  // Query editor state to update React states with selection or active formatting styles
+  const handleStyleChange = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    // 1. Get from current selection first
+    let color = editor.sharedStyles?.get?.(DefaultColorStyle)?.value;
+    let size = editor.sharedStyles?.get?.(DefaultSizeStyle)?.value;
+    let dash = editor.sharedStyles?.get?.(DefaultDashStyle)?.value;
+    let fill = editor.sharedStyles?.get?.(DefaultFillStyle)?.value;
+
+    // 2. Fallback to active styles for next shapes if selection is empty
+    if (color === undefined) {
+      const active = editor.activeStyles?.get?.(DefaultColorStyle);
+      color = typeof active === 'object' && active !== null ? active.value : active;
+    }
+    if (size === undefined) {
+      const active = editor.activeStyles?.get?.(DefaultSizeStyle);
+      size = typeof active === 'object' && active !== null ? active.value : active;
+    }
+    if (dash === undefined) {
+      const active = editor.activeStyles?.get?.(DefaultDashStyle);
+      dash = typeof active === 'object' && active !== null ? active.value : active;
+    }
+    if (fill === undefined) {
+      const active = editor.activeStyles?.get?.(DefaultFillStyle);
+      fill = typeof active === 'object' && active !== null ? active.value : active;
+    }
+
+    setActiveStyles({
+      color: color || 'black',
+      size: size || 'm',
+      dash: dash || 'draw',
+      fill: fill || 'none',
+    });
+  };
+
+  // Helper to set style for both current selected shapes and next shapes to be drawn
+  const setStyle = (style, value) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.setStyleForSelectedShapes(style, value);
+    editor.setStyleForNextShapes(style, value);
+    
+    // Immediately query editor to update UI state
+    handleStyleChange();
+  };
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    editor.on('selection-change', handleStyleChange);
+    editor.on('style-change', handleStyleChange);
+
+    // Initial query
+    handleStyleChange();
+
+    return () => {
+      editor.off('selection-change', handleStyleChange);
+      editor.off('style-change', handleStyleChange);
+    };
+  }, [editorRef.current]);
 
   // Active states
   const [activeTool, setActiveTool] = useState("select");
@@ -562,26 +644,20 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
     <div className="absolute inset-0 overflow-hidden" style={{ background: isDark ? "#0c0c0e" : "#f5f5f7" }}>
       <style dangerouslySetInnerHTML={{__html: `
         ${tutorialStyles}
-        .tlui-toolbar { display: none !important; }
-        .tlui-help-menu, .tlui-debug-panel, .tlui-keyboard-shortcuts-button,
-        [data-testid="help-menu"], [data-testid="debug-menu"] { display: none !important; }
-        .tlui-navigation-zone {
+        [class*="toolbar"] { display: none !important; }
+        [class*="navigation-zone"] {
           bottom: 12px !important;
           left: 12px !important;
           z-index: 99 !important;
         }
-        .tlui-menu-zone {
-          display: flex !important;
+        [class*="menu-zone"] {
           position: absolute !important;
           bottom: 12px !important;
           left: 140px !important;
           top: auto !important;
-          background: transparent !important;
-          border: none !important;
-          box-shadow: none !important;
           z-index: 99 !important;
         }
-        .tlui-style-panel {
+        [class*="style-panel"] {
           position: static !important;
           transform: none !important;
           box-shadow: none !important;
@@ -770,11 +846,119 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
                 </svg>
               </div>
 
-              {/* Style Panel Body */}
-              <div className={`w-[224px] border p-3 rounded-b-xl backdrop-blur-xl ${
+              {/* Rebuilt Custom Style Panel Body */}
+              <div className={`w-[224px] border p-3.5 rounded-b-xl backdrop-blur-xl flex flex-col gap-4 ${
                 isDark ? "bg-[#141416]/95 border-white/10 text-white" : "bg-white/95 border-neutral-200 text-neutral-800"
               }`}>
-                <DefaultStylePanel />
+                {/* 1. Color Grid */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-40">Color</span>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[
+                      { id: "black", value: "#1e293b" },
+                      { id: "grey", value: "#64748b" },
+                      { id: "red", value: "#ef4444" },
+                      { id: "orange", value: "#f97316" },
+                      { id: "yellow", value: "#eab308" },
+                      { id: "green", value: "#22c55e" },
+                      { id: "light-blue", value: "#06b6d4" },
+                      { id: "blue", value: "#3b82f6" },
+                      { id: "violet", value: "#8b5cf6" },
+                      { id: "pink", value: "#ec4899" }
+                    ].map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => setStyle(DefaultColorStyle, c.id)}
+                        className={`w-7 h-7 rounded-full border-2 transition-all relative flex items-center justify-center ${
+                          activeStyles.color === c.id 
+                            ? "border-[#007aff] scale-110 shadow-lg" 
+                            : "border-transparent hover:scale-105"
+                        }`}
+                        style={{ backgroundColor: c.value }}
+                        title={c.id}
+                      >
+                        {activeStyles.color === c.id && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Size Section */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-40">Size</span>
+                  <div className="flex bg-neutral-500/10 rounded-lg p-0.5 w-full">
+                    {[
+                      { id: "s", label: "S" },
+                      { id: "m", label: "M" },
+                      { id: "l", label: "L" },
+                      { id: "xl", label: "XL" }
+                    ].map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => setStyle(DefaultSizeStyle, s.id)}
+                        className={`flex-1 text-[10px] font-bold py-1 rounded-md transition-all ${
+                          activeStyles.size === s.id
+                            ? "bg-[#007aff] text-white shadow-sm"
+                            : isDark ? "text-white/60 hover:bg-white/5" : "text-neutral-600 hover:bg-black/5"
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Dash Section */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-40">Dash</span>
+                  <div className="flex bg-neutral-500/10 rounded-lg p-0.5 w-full">
+                    {[
+                      { id: "draw", label: "Draw" },
+                      { id: "solid", label: "Solid" },
+                      { id: "dashed", label: "Dash" },
+                      { id: "dotted", label: "Dot" }
+                    ].map((d) => (
+                      <button
+                        key={d.id}
+                        onClick={() => setStyle(DefaultDashStyle, d.id)}
+                        className={`flex-1 text-[10px] font-bold py-1 rounded-md transition-all ${
+                          activeStyles.dash === d.id
+                            ? "bg-[#007aff] text-white shadow-sm"
+                            : isDark ? "text-white/60 hover:bg-white/5" : "text-neutral-600 hover:bg-black/5"
+                        }`}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 4. Fill Section */}
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] uppercase font-bold tracking-wider opacity-40">Fill</span>
+                  <div className="flex bg-neutral-500/10 rounded-lg p-0.5 w-full">
+                    {[
+                      { id: "none", label: "None" },
+                      { id: "semi", label: "Semi" },
+                      { id: "solid", label: "Solid" },
+                      { id: "pattern", label: "Pat" }
+                    ].map((f) => (
+                      <button
+                        key={f.id}
+                        onClick={() => setStyle(DefaultFillStyle, f.id)}
+                        className={`flex-1 text-[10px] font-bold py-1 rounded-md transition-all ${
+                          activeStyles.fill === f.id
+                            ? "bg-[#007aff] text-white shadow-sm"
+                            : isDark ? "text-white/60 hover:bg-white/5" : "text-neutral-600 hover:bg-black/5"
+                        }`}
+                      >
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           )

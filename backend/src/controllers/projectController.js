@@ -21,7 +21,7 @@ const createProject = async (req, res) => {
       slides: [{
         slideId: "slide-1",
         name: "Slide 1",
-        drawingData: [],
+        drawingData: {},
       }],
     });
 
@@ -101,6 +101,7 @@ const saveProjectDrawing = async (req, res) => {
     }
 
     slide.drawingData = drawingData;
+    project.markModified("slides");
     await project.save();
 
     res.json({ success: true, message: "Drawing autosaved successfully" });
@@ -172,7 +173,7 @@ const addSlide = async (req, res) => {
     project.slides.push({
       slideId,
       name: newSlideName,
-      drawingData: [],
+      drawingData: {},
     });
 
     await project.save();

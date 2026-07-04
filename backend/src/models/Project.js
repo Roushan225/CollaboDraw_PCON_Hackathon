@@ -23,7 +23,7 @@ const projectSchema = new mongoose.Schema({
   slides: [{
     slideId: { type: String, required: true },
     name: { type: String, required: true },
-    drawingData: { type: Array, default: [] },
+    drawingData: { type: mongoose.Schema.Types.Mixed, default: {} },
   }],
   createdAt: {
     type: Date,

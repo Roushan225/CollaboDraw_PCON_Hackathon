@@ -1,17 +1,15 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import Canvas from "../components/Canvas";
-import Toolbar from "../components/Toolbar";
 import useSocket from "../hooks/useSocket";
 import api from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 
-// Simple Component to render vector previews of slides in a square card
+// Render vector previews of tldraw store shapes in a square card
 function SlidePreviewCard({ slide, isActive, onClick, onDelete, theme }) {
   const isDark = theme === "dark";
   const { name, drawingData } = slide;
 
-  // Define styling classes
   const cardBorder = isActive
     ? (isDark ? "border-white ring-2 ring-white/10" : "border-neutral-900 ring-2 ring-black/5")
     : (isDark ? "border-white/10 hover:border-white/30" : "border-neutral-200 hover:border-neutral-400 bg-white");
@@ -19,79 +17,98 @@ function SlidePreviewCard({ slide, isActive, onClick, onDelete, theme }) {
   const textBg = isDark ? "bg-black/60 text-white/70" : "bg-neutral-100/80 text-neutral-800";
   const canvasBg = isDark ? "bg-[#141416]" : "bg-neutral-50";
 
+  // Extract shapes from tldraw store snapshot
+  const shapes = drawingData?.store
+    ? Object.values(drawingData.store).filter((r) => r.typeName === "shape")
+    : [];
+
   return (
     <div
       onClick={onClick}
       className={`w-[72px] h-[72px] rounded-xl border flex flex-col relative overflow-hidden transition-all duration-200 cursor-pointer select-none shrink-0 group ${cardBorder} ${canvasBg}`}
     >
-      {/* Dynamic Mini SVG drawing preview */}
-      <svg viewBox="0 0 1600 1000" className="w-full h-[52px] pointer-events-none p-1.5 opacity-80">
-        {drawingData?.map((shape, idx) => {
-          const color = shape.color === "#ffffff" && !isDark ? "#d4d4d8" : shape.color;
-          const strokeWidth = Math.max(8, shape.strokeWidth * 1.5);
+      {/* Tldraw SVG preview wrapper */}
+      <svg viewBox="0 0 1200 800" className="w-full h-[52px] pointer-events-none p-1.5 opacity-80">
+        {shapes.map((shape, idx) => {
+          const color = isDark ? "#ffffff" : "#171717";
+          const strokeWidth = 8;
+          const { x, y } = shape;
+          const props = shape.props || {};
 
-          if (shape.tool === "pen" || shape.tool === "eraser") {
-            const pointsStr = shape.points?.reduce((acc, val, i) => {
-              return acc + (i % 2 === 0 ? `${val},` : `${val} `);
-            }, "");
+          if (shape.type === "draw") {
+            // Draw segments
+            let d = "";
+            props.segments?.forEach((seg) => {
+              if (seg.points?.length > 0) {
+                seg.points.forEach((pt, i) => {
+                  const px = x + pt.x;
+                  const py = y + pt.y;
+                  d += (i === 0 ? "M " : "L ") + `${px} ${py} `;
+                });
+              }
+            });
             return (
-              <polyline
+              <path
                 key={idx}
-                points={pointsStr}
+                d={d}
                 fill="none"
-                stroke={shape.tool === "eraser" ? (isDark ? "#141416" : "#f5f5f5") : color}
+                stroke={color}
                 strokeWidth={strokeWidth}
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
             );
-          } else if (shape.tool === "rectangle") {
-            return (
-              <rect
-                key={idx}
-                x={shape.x}
-                y={shape.y}
-                width={shape.width}
-                height={shape.height}
-                fill="none"
-                stroke={color}
-                strokeWidth={strokeWidth}
-                rx={10}
-              />
-            );
-          } else if (shape.tool === "circle") {
-            return (
-              <circle
-                key={idx}
-                cx={shape.x}
-                cy={shape.y}
-                r={shape.radius}
-                fill="none"
-                stroke={color}
-                strokeWidth={strokeWidth}
-              />
-            );
-          } else if (shape.tool === "arrow" || shape.tool === "line") {
+          } else if (shape.type === "geo") {
+            if (props.geo === "rectangle") {
+              return (
+                <rect
+                  key={idx}
+                  x={x}
+                  y={y}
+                  width={props.w}
+                  height={props.h}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={strokeWidth}
+                  rx={8}
+                />
+              );
+            } else if (props.geo === "ellipse") {
+              return (
+                <ellipse
+                  key={idx}
+                  cx={x + props.w / 2}
+                  cy={y + props.h / 2}
+                  rx={props.w / 2}
+                  ry={props.h / 2}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={strokeWidth}
+                />
+              );
+            }
+          } else if (shape.type === "arrow" || shape.type === "line") {
+            // Simple line connection representation
             return (
               <line
                 key={idx}
-                x1={shape.points[0]}
-                y1={shape.points[1]}
-                x2={shape.points[2]}
-                y2={shape.points[3]}
+                x1={x}
+                y1={y}
+                x2={x + (props.w || 100)}
+                y2={y + (props.h || 100)}
                 stroke={color}
                 strokeWidth={strokeWidth}
                 strokeLinecap="round"
               />
             );
-          } else if (shape.tool === "text") {
+          } else if (shape.type === "text" || shape.type === "note") {
             return (
               <text
                 key={idx}
-                x={shape.x}
-                y={shape.y + 20}
+                x={x}
+                y={y + 50}
                 fill={color}
-                fontSize={64}
+                fontSize={70}
                 fontWeight="bold"
                 fontFamily="sans-serif"
               >
@@ -103,7 +120,7 @@ function SlidePreviewCard({ slide, isActive, onClick, onDelete, theme }) {
         })}
       </svg>
 
-      {/* Tiny Slide Label Panel */}
+      {/* Tiny card label */}
       <div className={`h-5 flex items-center justify-between px-2 text-[9px] font-bold tracking-tight absolute bottom-0 left-0 right-0 ${textBg}`}>
         <span className="truncate max-w-[45px]">{name}</span>
         {onDelete && (
@@ -128,24 +145,21 @@ export default function DrawingRoom() {
   const socketRef = useSocket();
   const { user } = useAuth();
   
-  // Dynamic theme matching (Lighter white vs Neutral Black)
+  // Theme check from local storage
   const [theme] = useState(() => localStorage.getItem("theme") || "dark");
   const isDark = theme === "dark";
 
-  // Project details state
+  // Project details
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [projectError, setProjectError] = useState("");
 
-  // Slide state array
+  // Slides details
   const [slides, setSlides] = useState([]);
   const [activeSlideId, setActiveSlideId] = useState("");
 
-  // Drawing tools state
-  const [color, setColor] = useState(isDark ? "#ffffff" : "#000000"); // default matching color
-  const [strokeWidth, setStrokeWidth] = useState(4);
-  const [tool, setTool] = useState("pen");
-  const [lines, setLines] = useState([]);
+  // Drawing state (Now represented as Tldraw store snapshots)
+  const [lines, setLines] = useState(null);
 
   // Invite state
   const [searchQuery, setSearchQuery] = useState("");
@@ -166,7 +180,7 @@ export default function DrawingRoom() {
         
         if (proj.slides && proj.slides.length > 0) {
           setActiveSlideId(proj.slides[0].slideId);
-          setLines(proj.slides[0].drawingData || []);
+          setLines(proj.slides[0].drawingData || null);
         }
       } catch (err) {
         setProjectError(err?.response?.data?.message || "Failed to load project");
@@ -196,10 +210,10 @@ export default function DrawingRoom() {
       if (!stillExists && updatedSlides.length > 0) {
         const fallback = updatedSlides[0];
         setActiveSlideId(fallback.slideId);
-        setLines(fallback.drawingData || []);
+        setLines(fallback.drawingData || null);
       } else {
         const activeObj = updatedSlides.find(s => s.slideId === activeSlideId);
-        if (activeObj) setLines(activeObj.drawingData || []);
+        if (activeObj) setLines(activeObj.drawingData || null);
       }
     });
 
@@ -208,17 +222,16 @@ export default function DrawingRoom() {
       setActiveSlideId(slideId);
       setSlides(currSlides => {
         const slideObj = currSlides.find(s => s.slideId === slideId);
-        if (slideObj) setLines(slideObj.drawingData || []);
+        if (slideObj) setLines(slideObj.drawingData || null);
         return currSlides;
       });
     });
 
-    // Remote user synced drawing canvas
+    // Remote user synced drawing canvas snapshot
     socket.on("sync-canvas", ({ slideId: incomingSlideId, canvasData }) => {
       if (incomingSlideId === activeSlideId) {
         setLines(canvasData);
       }
-      // Update local slide drawing data array immediately for card rendering
       setSlides(prev => prev.map(s => {
         if (s.slideId === incomingSlideId) {
           return { ...s, drawingData: canvasData };
@@ -239,7 +252,7 @@ export default function DrawingRoom() {
   const handleSwitchSlide = (slideId) => {
     setActiveSlideId(slideId);
     const targetSlide = slides.find(s => s.slideId === slideId);
-    setLines(targetSlide ? targetSlide.drawingData || [] : []);
+    setLines(targetSlide ? targetSlide.drawingData || null : null);
 
     // Broadcast switch event
     socketRef.current?.emit("switch-slide", {
@@ -259,7 +272,7 @@ export default function DrawingRoom() {
       setSlides(newSlides);
       
       setActiveSlideId(res.data.slideId);
-      setLines([]);
+      setLines(null);
 
       // Broadcast changes
       socketRef.current?.emit("update-slides", { roomId, slides: newSlides });
@@ -280,7 +293,7 @@ export default function DrawingRoom() {
         const fallbackId = newSlides[0].slideId;
         setActiveSlideId(fallbackId);
         const fallbackSlide = newSlides.find(s => s.slideId === fallbackId);
-        setLines(fallbackSlide ? fallbackSlide.drawingData || [] : []);
+        setLines(fallbackSlide ? fallbackSlide.drawingData || null : null);
       }
 
       // Broadcast changes
@@ -290,43 +303,24 @@ export default function DrawingRoom() {
     }
   };
 
-  // Rename a slide prompt
-  const handleRenameSlide = (slide) => {
-    const newName = prompt("Enter new slide name:", slide.name);
-    if (newName && newName.trim()) {
-      api.put(`/projects/${roomId}/slides/${slide.slideId}`, { name: newName.trim() })
-        .then(res => {
-          setSlides(res.data.slides);
-          socketRef.current?.emit("update-slides", { roomId, slides: res.data.slides });
-        });
-    }
-  };
-
-  // Autosave active slide drawing lines back to Mongo
-  const saveDrawingToBackend = async (updatedLines) => {
+  // Autosave active slide drawing snapshot back to Mongo
+  const saveDrawingToBackend = async (updatedSnapshot) => {
     try {
       await api.post(`/projects/${roomId}/save`, {
         slideId: activeSlideId,
-        drawingData: updatedLines,
+        drawingData: updatedSnapshot,
       });
 
       // Update local slide drawing data array immediately for card rendering
       setSlides(prev => prev.map(s => {
         if (s.slideId === activeSlideId) {
-          return { ...s, drawingData: updatedLines };
+          return { ...s, drawingData: updatedSnapshot };
         }
         return s;
       }));
     } catch (err) {
       console.error("Autosave slide error", err);
     }
-  };
-
-  // Handle clear active canvas lines
-  const handleClear = () => {
-    setLines([]);
-    socketRef.current?.emit("clear-canvas", { roomId, slideId: activeSlideId });
-    saveDrawingToBackend([]);
   };
 
   // Search members debounced
@@ -394,12 +388,11 @@ export default function DrawingRoom() {
   const bgClass = isDark ? "bg-[#0b0b0d] text-white" : "bg-[#f5f5f7] text-neutral-900";
   const barBgClass = isDark ? "bg-black/90 border-white/10" : "bg-white border-neutral-200 shadow-sm";
   const textMutedClass = isDark ? "text-white/40" : "text-neutral-500";
-  const borderClass = isDark ? "border-white/10" : "border-neutral-200";
 
   return (
     <div className={`min-h-screen flex flex-col overflow-hidden transition-colors duration-300 ${bgClass}`}>
       
-      {/* Header Bar (Increased height to h-24 & padded to px-8 for premium room layout) */}
+      {/* Header Bar */}
       <header className={`border-b h-24 shrink-0 px-8 flex items-center justify-between transition-colors duration-300 relative z-20 ${barBgClass}`}>
         
         {/* Left Side: Back action & Project Details */}
@@ -557,27 +550,14 @@ export default function DrawingRoom() {
         </div>
       </header>
 
-      {/* Floating Canvas Area (Dynamic background matching active theme) */}
-      <main className={`flex-1 relative overflow-hidden flex items-center justify-start md:pl-20 transition-colors duration-300 ${
+      {/* Floating Canvas Area (Tldraw manages toolbar internally) */}
+      <main className={`flex-1 relative overflow-hidden flex items-center justify-start transition-colors duration-300 ${
         isDark ? "bg-[#0c0c0e]" : "bg-[#f5f5f7]"
       }`}>
-        <Toolbar
-          color={color}
-          setColor={setColor}
-          strokeWidth={strokeWidth}
-          setStrokeWidth={setStrokeWidth}
-          tool={tool}
-          setTool={setTool}
-          onClear={handleClear}
-        />
-
         <Canvas
           socketRef={socketRef}
           roomId={roomId}
           slideId={activeSlideId}
-          color={color}
-          strokeWidth={strokeWidth}
-          tool={tool}
           lines={lines}
           setLines={setLines}
           onDrawEnd={saveDrawingToBackend}

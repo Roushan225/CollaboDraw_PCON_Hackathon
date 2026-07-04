@@ -31,6 +31,11 @@ const setupSocket = (io) => {
       socket.to(roomId).emit("update-slides", slides);
     });
 
+    // Broadcast tldraw shape / store changes
+    socket.on("tldraw-change", ({ roomId, slideId, changes }) => {
+      socket.to(roomId).emit("tldraw-change", { slideId, changes });
+    });
+
     socket.on("disconnect", () => {
       console.log("User disconnected:", socket.id);
     });

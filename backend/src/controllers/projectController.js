@@ -63,7 +63,12 @@ const getProjectDetail = async (req, res) => {
     const isMember = project.members.some(m => m._id.toString() === req.userId);
 
     if (!isCreator && !isMember) {
-      return res.status(403).json({ success: false, message: "You are not authorized" });
+      // Automatically add the user as a collaborator to this project room
+      project.members.push(req.userId);
+      await project.save();
+      
+      // Populate the newly updated members array
+      await project.populate("members", "username email");
     }
 
     res.json({ success: true, project });

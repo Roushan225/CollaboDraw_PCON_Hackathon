@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function Signup() {
@@ -7,6 +7,9 @@ export default function Signup() {
   const [error, setError]     = useState("");
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
+
+  const [searchParams] = useSearchParams();
+  const inviteProjectId = searchParams.get("invite");
 
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -43,7 +46,11 @@ export default function Signup() {
     setLoading(true);
     try {
       await register(form.username, form.email, form.password);
-      navigate("/");
+      if (inviteProjectId) {
+        navigate(`/room/${inviteProjectId}`);
+      } else {
+        navigate("/");
+      }
     } catch (err) {
       setError(err?.response?.data?.message || "Registration failed. Please try again.");
     } finally {
@@ -54,8 +61,8 @@ export default function Signup() {
   return (
     <div className="min-h-screen bg-black text-white flex flex-col relative overflow-hidden">
       
-      {/* Dynamic Animated Whiteboard Sketch Background */}
-      <div className="pointer-events-none absolute inset-0 z-0 opacity-25 select-none">
+      {/* Dynamic Animated Whiteboard Sketch Background (Increased opacity for clear visibility) */}
+      <div className="pointer-events-none absolute inset-0 z-0 opacity-70 select-none">
         <style dangerouslySetInnerHTML={{__html: `
           @keyframes bgDraw1 {
             0% { stroke-dashoffset: 1000; }
@@ -79,7 +86,7 @@ export default function Signup() {
         <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.03)" strokeWidth="1" />
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="1" />
             </pattern>
           </defs>
           <rect width="100%" height="100%" fill="url(#grid)" />
@@ -88,14 +95,14 @@ export default function Signup() {
           <path
             d="M -100 200 C 300 50, 700 600, 1100 150 C 1500 -100, 1700 800, 2100 400"
             fill="none"
-            stroke="rgba(255, 255, 255, 0.08)"
+            stroke="rgba(255, 255, 255, 0.18)"
             strokeWidth="3"
             className="animate-bg-stroke"
           />
           <path
             d="M 2100 900 C 1700 700, 1300 200, 900 800 C 500 1200, 100 -200, -100 300"
             fill="none"
-            stroke="rgba(255, 255, 255, 0.04)"
+            stroke="rgba(255, 255, 255, 0.12)"
             strokeWidth="2.5"
             strokeDasharray="15 10"
             className="animate-bg-stroke"
@@ -104,12 +111,12 @@ export default function Signup() {
 
           {/* Floating abstract geometry */}
           <g className="animate-bg-card">
-            <rect x="10%" y="20%" width="120" height="80" rx="8" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="2" />
-            <circle cx="10%" cy="20%" r="3" fill="rgba(255,255,255,0.1)" />
+            <rect x="10%" y="20%" width="120" height="80" rx="8" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="2" />
+            <circle cx="10%" cy="20%" r="3" fill="rgba(255,255,255,0.2)" />
           </g>
           <g className="animate-bg-card" style={{ animationDelay: "-3s" }}>
-            <circle cx="85%" cy="70%" r="80" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="2" />
-            <line x1="85%" y1="70%" x2="90%" y2="60%" stroke="rgba(255,255,255,0.06)" strokeWidth="1.5" />
+            <circle cx="85%" cy="70%" r="80" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
+            <line x1="85%" y1="70%" x2="90%" y2="60%" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" />
           </g>
         </svg>
       </div>
@@ -124,7 +131,10 @@ export default function Signup() {
           </div>
           <span className="text-sm font-bold tracking-tight">CollaboDraw</span>
         </Link>
-        <Link to="/login" className="text-xs text-white/40 hover:text-white transition-colors">
+        <Link
+          to={inviteProjectId ? `/login?invite=${inviteProjectId}` : "/login"}
+          className="text-xs text-white/40 hover:text-white transition-colors"
+        >
           Have an account? <span className="text-white underline underline-offset-2">Sign in</span>
         </Link>
       </nav>
@@ -270,7 +280,10 @@ export default function Signup() {
 
           <p className="text-center text-xs text-white/40 mt-6">
             Already have an account?{" "}
-            <Link to="/login" className="text-white underline underline-offset-2">
+            <Link
+              to={inviteProjectId ? `/login?invite=${inviteProjectId}` : "/login"}
+              className="text-white underline underline-offset-2"
+            >
               Sign in
             </Link>
           </p>

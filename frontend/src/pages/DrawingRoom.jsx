@@ -502,6 +502,24 @@ export default function DrawingRoom() {
                     {inviteSuccess && <div className="mb-3 text-[10px] text-green-400 bg-green-950/20 border border-green-900/50 p-2 rounded-lg">{inviteSuccess}</div>}
 
                     <div className="flex flex-col gap-3">
+                      
+                      {/* Copy Shareable Invite Link Button */}
+                      <button
+                        onClick={() => {
+                          const inviteLink = `${window.location.origin}/signup?invite=${roomId}`;
+                          navigator.clipboard.writeText(inviteLink);
+                          setInviteSuccess("Invite link copied to clipboard!");
+                        }}
+                        className={`w-full py-2.5 rounded-xl border text-xs font-bold transition-all duration-100 flex items-center justify-center gap-1.5 active:scale-95 ${
+                          isDark
+                            ? "bg-white/5 border-white/10 hover:bg-white/10 text-white"
+                            : "bg-neutral-50 border-neutral-200 hover:bg-neutral-100 text-neutral-800"
+                        }`}
+                      >
+                        🔗 Copy Invite Link
+                      </button>
+
+                      <div className={`h-px my-1 ${isDark ? "bg-white/5" : "bg-neutral-200/60"}`} />
                       <input
                         type="text"
                         placeholder="Search username..."

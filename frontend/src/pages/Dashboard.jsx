@@ -15,16 +15,15 @@ export default function Dashboard() {
 
   // Selected project ID for filtering slides (null means 'All Files' / All Projects selected)
   const [selectedProjectId, setSelectedProjectId] = useState(null);
+  
+  // Navigation tabs state: 'all' | 'recents' | 'created-by-me' | 'folders'
+  const [activeTab, setActiveTab] = useState("all");
 
   // Theme check: light (premium white) or dark
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
   const isDark = theme === "dark";
 
   const navigate = useNavigate();
-
-  useEffect(() => {
-    localStorage.setItem("theme", theme);
-  }, [theme]);
 
   const fetchProjects = async () => {
     try {
@@ -61,11 +60,13 @@ export default function Dashboard() {
   };
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    localStorage.setItem("theme", nextTheme);
   };
 
-  // Compile Slide Items depending on folder selection
-  const slideItems = [];
+  // Compile Slide Items depending on folder selection & tab choices
+  let slideItems = [];
   if (selectedProjectId === null) {
     // All Projects selected: Flatten all slides
     projects.forEach((proj) => {
@@ -89,6 +90,21 @@ export default function Dashboard() {
     }
   }
 
+  // Filter based on selected tabs
+  if (activeTab === "recents") {
+    // Sort by last modified slides
+    slideItems = [...slideItems].sort((a, b) => {
+      const dateA = new Date(a.project?.createdAt);
+      const dateB = new Date(b.project?.createdAt);
+      return dateB - dateA;
+    });
+  } else if (activeTab === "created-by-me") {
+    // Filter created by logged in user
+    slideItems = slideItems.filter(
+      (s) => s.project?.creator?._id === user?.id || s.project?.creator === user?.id
+    );
+  }
+
   // Filter slide items by search query
   const filteredSlides = slideItems.filter((slide) =>
     slide.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -102,6 +118,11 @@ export default function Dashboard() {
   const textMuted = isDark ? "text-white/40" : "text-neutral-400";
   const textSecondary = isDark ? "text-white/60" : "text-neutral-500";
   const listHoverClass = isDark ? "hover:bg-white/5" : "hover:bg-neutral-50";
+
+  // Active folder styling classes (visible dark color / black on left nav in light mode)
+  const activeFolderClass = isDark 
+    ? "bg-white/10 text-white border-transparent" 
+    : "bg-neutral-950 text-white border-transparent shadow-md";
 
   // Format date helper
   const formatDate = (dateStr) => {
@@ -145,7 +166,7 @@ export default function Dashboard() {
               onClick={() => setSelectedProjectId(null)}
               className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 selectedProjectId === null
-                  ? (isDark ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-900 shadow-sm border border-neutral-200/40")
+                  ? activeFolderClass
                   : `${listHoverClass} ${textSecondary}`
               }`}
             >
@@ -172,7 +193,7 @@ export default function Dashboard() {
                     onClick={() => setSelectedProjectId(proj.projectId)}
                     className={`flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-all ${
                       isActive
-                        ? (isDark ? "bg-white/10 text-white" : "bg-neutral-100 text-neutral-900 border border-neutral-200/40")
+                        ? activeFolderClass
                         : `${listHoverClass} ${textSecondary}`
                     }`}
                   >
@@ -229,10 +250,46 @@ export default function Dashboard() {
         <header className="flex items-center justify-between border-b pb-5 mb-8 border-neutral-200/50">
           {/* Main workspace navigation tabs */}
           <div className="flex items-center gap-5 text-xs font-bold">
-            <span className={`cursor-pointer pb-2 border-b-2 ${isDark ? "border-white text-white" : "border-neutral-900 text-neutral-900"}`}>All</span>
-            <span className={`cursor-pointer pb-2 hover:text-white ${textMuted}`}>Recents</span>
-            <span className={`cursor-pointer pb-2 hover:text-white ${textMuted}`}>Created by Me</span>
-            <span className={`cursor-pointer pb-2 hover:text-white ${textMuted}`}>Folders</span>
+            <span
+              onClick={() => setActiveTab("all")}
+              className={`cursor-pointer pb-2 transition-all ${
+                activeTab === "all"
+                  ? (isDark ? "border-b-2 border-white text-white" : "border-b-2 border-neutral-900 text-neutral-900")
+                  : `${textMuted} hover:text-neutral-500`
+              }`}
+            >
+              All
+            </span>
+            <span
+              onClick={() => setActiveTab("recents")}
+              className={`cursor-pointer pb-2 transition-all ${
+                activeTab === "recents"
+                  ? (isDark ? "border-b-2 border-white text-white" : "border-b-2 border-neutral-900 text-neutral-900")
+                  : `${textMuted} hover:text-neutral-500`
+              }`}
+            >
+              Recents
+            </span>
+            <span
+              onClick={() => setActiveTab("created-by-me")}
+              className={`cursor-pointer pb-2 transition-all ${
+                activeTab === "created-by-me"
+                  ? (isDark ? "border-b-2 border-white text-white" : "border-b-2 border-neutral-900 text-neutral-900")
+                  : `${textMuted} hover:text-neutral-500`
+              }`}
+            >
+              Created by Me
+            </span>
+            <span
+              onClick={() => setActiveTab("folders")}
+              className={`cursor-pointer pb-2 transition-all ${
+                activeTab === "folders"
+                  ? (isDark ? "border-b-2 border-white text-white" : "border-b-2 border-neutral-900 text-neutral-900")
+                  : `${textMuted} hover:text-neutral-500`
+              }`}
+            >
+              Folders
+            </span>
           </div>
 
           <div className="flex items-center gap-4">

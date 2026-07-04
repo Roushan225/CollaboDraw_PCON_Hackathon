@@ -85,6 +85,11 @@ const setupSocket = (io) => {
       socket.to(roomId).emit("tldraw-change", { slideId, changes });
     });
 
+    // Broadcast member role changes (editor/viewer)
+    socket.on("role-change", ({ roomId, targetUserId, role }) => {
+      socket.to(roomId).emit("role-change", { targetUserId, role });
+    });
+
     // WebSocket Team/Group Chat Messages
     socket.on("send-chat-message", async (payload) => {
       const msg = {

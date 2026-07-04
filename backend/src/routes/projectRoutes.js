@@ -10,6 +10,7 @@ const {
   addSlide,
   renameSlide,
   deleteSlide,
+  updateMemberRole,
 } = require("../controllers/projectController");
 const { searchUsers } = require("../controllers/userController");
 
@@ -21,6 +22,7 @@ router.get("/projects", getProjects);
 router.get("/projects/:projectId", getProjectDetail);
 router.post("/projects/:projectId/save", saveProjectDrawing);
 router.post("/projects/:projectId/invite", inviteMember);
+router.put("/projects/:projectId/role", updateMemberRole);
 
 // Slide CRUD routes
 router.post("/projects/:projectId/slides", addSlide);

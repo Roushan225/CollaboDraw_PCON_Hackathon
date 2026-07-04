@@ -153,6 +153,8 @@ export default function DrawingRoom() {
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
   const [projectError, setProjectError] = useState("");
+  const [memberRoles, setMemberRoles] = useState({});
+  const [activeRolePopup, setActiveRolePopup] = useState(null);
 
   // Slides details
   const [slides, setSlides] = useState([]);
@@ -217,6 +219,7 @@ export default function DrawingRoom() {
         setProject(proj);
         setSlides(proj.slides || []);
         setMessages(proj.messages || []);
+        setMemberRoles(proj.memberRoles || {});
         
         if (proj.slides && proj.slides.length > 0) {
           // Check if custom slide query param is passed and valid
@@ -246,6 +249,7 @@ export default function DrawingRoom() {
       const res = await api.get(`/projects/${roomId}`);
       const proj = res.data.project;
       setProject(proj);
+      setMemberRoles(proj.memberRoles || {});
     } catch (err) {
       // ignore
     }
@@ -352,6 +356,11 @@ export default function DrawingRoom() {
       }));
     });
 
+    // Remote user's role changed (editor/viewer)
+    socket.on("role-change", ({ targetUserId, role }) => {
+      setMemberRoles((prev) => ({ ...prev, [targetUserId]: role }));
+    });
+
     return () => {
       socket.off("connect");
       socket.off("presence-update");
@@ -360,6 +369,7 @@ export default function DrawingRoom() {
       socket.off("update-slides");
       socket.off("switch-slide");
       socket.off("sync-canvas");
+      socket.off("role-change");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, socketRef, userId, username]);
@@ -481,6 +491,17 @@ export default function DrawingRoom() {
     }
   };
 
+  // Change member role
+  const handleRoleChange = async (targetUserId, newRole) => {
+    try {
+      await api.put(`/projects/${roomId}/role`, { targetUserId, role: newRole });
+      setMemberRoles((prev) => ({ ...prev, [targetUserId]: newRole }));
+      socketRef.current?.emit("role-change", { roomId, targetUserId, role: newRole });
+    } catch (err) {
+      console.error("Failed to update role", err);
+    }
+  };
+
   // Send message over WebSocket (Team or Private)
   const handleSendMessage = (e) => {
     e.preventDefault();
@@ -540,6 +561,7 @@ export default function DrawingRoom() {
   const loggedInUserId = user?._id || user?.id;
   const creatorId = project?.creator?._id || project?.creator;
   const isCreator = loggedInUserId && creatorId && (creatorId.toString() === loggedInUserId.toString());
+  const isReadonly = !isCreator && memberRoles[loggedInUserId] === "viewer";
 
   // Theme variables colors
   const bgClass = isDark ? "bg-[#0b0b0d] text-white" : "bg-[#f5f5f7] text-neutral-900";
@@ -593,19 +615,85 @@ export default function DrawingRoom() {
 
           {/* Members & Invites */}
           <div className="flex items-center gap-3">
-            <div className="flex -space-x-1.5 overflow-hidden">
+            <div className="flex -space-x-1.5 overflow-visible">
               {project.members?.map((member, idx) => {
                 const isOnline = onlineUsers.some((u) => u.userId === member._id);
                 const lastActiveStr = formatLastActive(member);
                 return (
-                  <div
-                    key={member._id || idx}
-                    title={`${member.username} (${isOnline ? "🟢" : "⚪"} ${lastActiveStr})`}
-                    className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-[9px] font-bold shrink-0 ${
-                      isDark ? "bg-neutral-800 border-black text-white/80" : "bg-neutral-100 border-white text-neutral-700 shadow-sm"
-                    }`}
-                  >
-                    {member.username?.[0]?.toUpperCase()}
+                  <div key={member._id || idx} className="relative group shrink-0">
+                    <div
+                      onClick={() => setActiveRolePopup(prev => prev === member._id ? null : member._id)}
+                      className={`w-8 h-8 rounded-full border-[2.5px] flex items-center justify-center text-[10px] font-bold shadow-sm transition-all duration-300 hover:-translate-y-1 hover:z-10 relative cursor-pointer ${
+                        isOnline
+                          ? (isDark ? "bg-neutral-800 border-green-500 text-white shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-neutral-100 border-green-500 text-neutral-800")
+                          : (isDark ? "bg-neutral-800 border-black text-white/50" : "bg-neutral-100 border-white text-neutral-500")
+                      }`}
+                    >
+                      {member.username?.[0]?.toUpperCase()}
+                      {isOnline && (
+                        <span className="absolute bottom-0 right-0 w-2 h-2 bg-green-500 border border-black rounded-full" />
+                      )}
+                    </div>
+
+                    {/* Premium Hover Tooltip (Small) */}
+                    <div className={`absolute top-full left-1/2 -translate-x-1/2 mt-2 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:translate-y-1 transition-all duration-200 z-50 flex flex-col items-center`}>
+                      <div className={`px-3 py-1.5 rounded-lg whitespace-nowrap border shadow-xl flex flex-col items-center gap-0.5 ${
+                        isDark ? "bg-[#1c1c1f] border-white/10 text-white" : "bg-white border-neutral-200 text-black"
+                      }`}>
+                        <span className="text-xs font-bold">{member.username}</span>
+                        <span className={`text-[9px] font-medium ${isDark ? "text-white/50" : "text-neutral-500"}`}>
+                          {isOnline ? "Online Now" : `Last seen ${lastActiveStr}`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Dedicated Role Popup on Click */}
+                    {activeRolePopup === member._id && (
+                      <div className={`absolute top-full left-1/2 -translate-x-1/2 mt-2 z-[60] flex flex-col items-center animate-in fade-in zoom-in duration-200`}>
+                        <div className={`p-3 rounded-xl min-w-[140px] border shadow-2xl flex flex-col items-center gap-2 ${
+                          isDark ? "bg-[#1c1c1f]/95 backdrop-blur-xl border-white/10 text-white" : "bg-white/95 backdrop-blur-xl border-neutral-200 text-black"
+                        }`}>
+                          <div className="flex items-center justify-between w-full pb-2 border-b border-inherit/10">
+                            <span className="text-xs font-extrabold truncate">{member.username}</span>
+                            <button onClick={(e) => { e.stopPropagation(); setActiveRolePopup(null); }} className="text-[10px] opacity-50 hover:opacity-100">✕</button>
+                          </div>
+                          
+                          {/* Role Status / Toggle */}
+                          {isCreator && member._id !== project.creator._id ? (
+                            <div className="flex w-full gap-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleRoleChange(member._id, "editor"); }}
+                                className={`flex-1 text-[9px] font-bold py-1.5 rounded-lg transition-colors ${
+                                  memberRoles[member._id] !== "viewer"
+                                    ? "bg-blue-500 text-white"
+                                    : isDark ? "bg-white/5 text-white/50 hover:bg-white/10" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
+                                }`}
+                              >
+                                Editor
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleRoleChange(member._id, "viewer"); }}
+                                className={`flex-1 text-[9px] font-bold py-1.5 rounded-lg transition-colors ${
+                                  memberRoles[member._id] === "viewer"
+                                    ? "bg-blue-500 text-white"
+                                    : isDark ? "bg-white/5 text-white/50 hover:bg-white/10" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
+                                }`}
+                              >
+                                Viewer
+                              </button>
+                            </div>
+                          ) : (
+                            <div className={`w-full text-center text-[10px] font-bold py-1 rounded-lg ${
+                              memberRoles[member._id] === "viewer" 
+                                ? isDark ? "bg-red-500/10 text-red-400" : "bg-red-50 text-red-600"
+                                : isDark ? "bg-white/5 text-white" : "bg-neutral-100 text-neutral-700"
+                            }`}>
+                              {member._id === project.creator._id ? "Creator" : memberRoles[member._id] === "viewer" ? "Viewer" : "Editor"}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -780,6 +868,7 @@ export default function DrawingRoom() {
           isChatOpen={showChatPanel}
           isInviteOpen={false}
           currentUser={user}
+          isReadonly={isReadonly}
         />
 
         {/* 1. FLOATING CHAT PANEL TOGGLE BUTTON */}

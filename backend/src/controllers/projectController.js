@@ -166,6 +166,49 @@ const inviteMember = async (req, res) => {
   }
 };
 
+// PUT /api/projects/:projectId/role
+const updateMemberRole = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+    const { targetUserId, role } = req.body;
+
+    if (!targetUserId || !role) {
+      return res.status(400).json({ success: false, message: "targetUserId and role are required" });
+    }
+
+    if (!["editor", "viewer"].includes(role)) {
+      return res.status(400).json({ success: false, message: "Role must be 'editor' or 'viewer'" });
+    }
+
+    const project = await Project.findOne({ projectId });
+    if (!project) {
+      return res.status(404).json({ success: false, message: "Project not found" });
+    }
+
+    // Only creators can change roles
+    if (project.creator.toString() !== req.userId) {
+      return res.status(403).json({ success: false, message: "Only creators can change member roles" });
+    }
+
+    // You can't change the creator's role
+    if (targetUserId === req.userId) {
+      return res.status(400).json({ success: false, message: "Cannot change the creator's role" });
+    }
+
+    // Ensure the target is actually a member
+    if (!project.members.includes(targetUserId)) {
+      return res.status(404).json({ success: false, message: "Target user is not a member of this project" });
+    }
+
+    project.memberRoles.set(targetUserId, role);
+    await project.save();
+
+    res.json({ success: true, message: `User role updated to ${role}`, memberRoles: project.memberRoles });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 /* ── SLIDES CRUD CONTROLLERS ── */
 
 // POST /api/projects/:projectId/slides
@@ -264,4 +307,5 @@ module.exports = {
   addSlide,
   renameSlide,
   deleteSlide,
+  updateMemberRole,
 };

@@ -68,7 +68,7 @@ const AUTOSAVE_DELAY_MS = 300;
  * 
  * When slideId changes, useMemo creates a fresh store pre-populated with that slide's data.
  */
-function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpen, isInviteOpen, currentUser }) {
+function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpen, isInviteOpen, currentUser, isReadonly }) {
   const isDark = theme === "dark";
   const saveTimeoutRef = useRef(null);
   const editorRef = useRef(null); // Use ref instead of state — avoids re-render on mount
@@ -619,6 +619,9 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
       <style dangerouslySetInnerHTML={{__html: `
         ${tutorialStyles}
         [class*="toolbar"] { display: none !important; }
+        [class*="tlui-debug-panel"], [class*="tlui-status-bar"], [data-testid="debug-panel"], .tlui-helper-buttons { 
+          display: none !important; 
+        }
         [class*="navigation-zone"] {
           bottom: 12px !important;
           left: 12px !important;
@@ -627,9 +630,19 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         [class*="menu-zone"] {
           position: absolute !important;
           bottom: 12px !important;
-          left: 140px !important;
+          left: 190px !important;
           top: auto !important;
           z-index: 99 !important;
+          display: flex !important;
+          flex-direction: row !important;
+          align-items: center !important;
+          gap: 8px !important;
+        }
+        [class*="menu-zone"] > div {
+          display: flex !important;
+          flex-direction: row !important;
+          align-items: center !important;
+          gap: 8px !important;
         }
         [class*="style-panel"] {
           position: static !important;
@@ -651,11 +664,12 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         }
       `}} />
 
-      {/* Draggable Toolbar */}
-      <div
-        className="fixed z-[100] flex flex-col items-start select-none"
-        style={{ left: `${toolbarPos.x}px`, top: `${toolbarPos.y}px`, pointerEvents: "all" }}
-      >
+      {/* Draggable Toolbar (Hidden for Viewers) */}
+      {!isReadonly && (
+        <div
+          className="fixed z-[100] flex flex-col items-start select-none"
+          style={{ left: `${toolbarPos.x}px`, top: `${toolbarPos.y}px`, pointerEvents: "all" }}
+        >
         {/* Drag Handle */}
         <div
           onMouseDown={handleMouseDown}
@@ -789,6 +803,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
           </div>
         )}
       </div>
+      )}
 
       {/*
         Pass the pre-populated store directly to Tldraw.
@@ -797,8 +812,12 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
       */}
       <Tldraw
         store={store}
+        isReadonly={isReadonly}
         components={{
-          StylePanel: () => (
+          HelperButtons: () => null,
+          DebugPanel: () => null,
+          DebugMenu: () => null,
+          StylePanel: () => isReadonly ? null : (
             <div
               className={`fixed z-[100] top-[70px] right-4 sm:right-6 w-full max-w-[280px] sm:w-[280px] p-4 rounded-2xl shadow-2xl backdrop-blur-2xl border transition-all duration-300 ease-out select-none flex flex-col gap-5 ${
                 isDark 

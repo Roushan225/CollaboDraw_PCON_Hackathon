@@ -20,6 +20,11 @@ const projectSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
   }],
+  memberRoles: {
+    type: Map,
+    of: String,
+    default: {}
+  },
   slides: [{
     slideId: { type: String, required: true },
     name: { type: String, required: true },

@@ -39,6 +39,7 @@ const getProjects = async (req, res) => {
     })
       .populate("creator", "username email")
       .populate("members", "username email lastActive")
+      .populate("slides.lastModifiedBy", "username email")
       .sort({ createdAt: -1 });
 
     res.json({ success: true, projects });
@@ -53,7 +54,8 @@ const getProjectDetail = async (req, res) => {
     const { projectId } = req.params;
     const project = await Project.findOne({ projectId })
       .populate("creator", "username email")
-      .populate("members", "username email lastActive");
+      .populate("members", "username email lastActive")
+      .populate("slides.lastModifiedBy", "username email");
 
     if (!project) {
       return res.status(404).json({ success: false, message: "Project not found" });
@@ -116,6 +118,8 @@ const saveProjectDrawing = async (req, res) => {
     }
 
     slide.drawingData = normalizedDrawingData;
+    slide.lastModifiedAt = Date.now();
+    slide.lastModifiedBy = req.userId;
     project.markModified("slides");
     await project.save();
 

@@ -3,6 +3,87 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
 
+const Icon = ({ name, className = "w-4 h-4" }) => {
+  const common = {
+    className,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: "1.8",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+  };
+
+  const icons = {
+    logo: (
+      <svg {...common}>
+        <path d="M4 17.5 8.5 7l5 6 6-9.5" />
+        <path d="M4 20h16" />
+      </svg>
+    ),
+    folder: (
+      <svg {...common}>
+        <path d="M3 6.5h6l2 2H21v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-11Z" />
+      </svg>
+    ),
+    file: (
+      <svg {...common}>
+        <path d="M7 3.5h7l4 4v13H7a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2Z" />
+        <path d="M14 3.5v4h4" />
+      </svg>
+    ),
+    plus: (
+      <svg {...common}>
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+    ),
+    search: (
+      <svg {...common}>
+        <circle cx="11" cy="11" r="6.5" />
+        <path d="m16 16 4 4" />
+      </svg>
+    ),
+    sun: (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="3.2" />
+        <path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" />
+      </svg>
+    ),
+    moon: (
+      <svg {...common}>
+        <path d="M20 14.2A7.7 7.7 0 0 1 9.8 4 8 8 0 1 0 20 14.2Z" />
+      </svg>
+    ),
+    logout: (
+      <svg {...common}>
+        <path d="M10 5H6.5A2.5 2.5 0 0 0 4 7.5v9A2.5 2.5 0 0 0 6.5 19H10" />
+        <path d="M14 8l4 4-4 4M18 12H9" />
+      </svg>
+    ),
+    open: (
+      <svg {...common}>
+        <path d="M7 17 17 7M9 7h8v8" />
+      </svg>
+    ),
+    users: (
+      <svg {...common}>
+        <path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20" />
+        <circle cx="10" cy="7" r="3" />
+        <path d="M20 20v-1.2a3 3 0 0 0-2-2.8" />
+        <path d="M16.5 4.4a3 3 0 0 1 0 5.2" />
+      </svg>
+    ),
+    clock: (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="8.5" />
+        <path d="M12 7.5V12l3 2" />
+      </svg>
+    ),
+  };
+
+  return icons[name] || null;
+};
+
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const [projects, setProjects] = useState([]);
@@ -12,14 +93,8 @@ export default function Dashboard() {
   const [createLoading, setCreateLoading] = useState(false);
   const [error, setError] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
-
-  // Selected project ID for filtering slides (null means 'All Files' / All Projects selected)
   const [selectedProjectId, setSelectedProjectId] = useState(null);
-  
-  // Navigation tabs state: 'all' | 'recents' | 'created-by-me' | 'folders'
   const [activeTab, setActiveTab] = useState("all");
-
-  // Theme check: light (premium white) or dark
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "dark");
   const isDark = theme === "dark";
 
@@ -65,66 +140,49 @@ export default function Dashboard() {
     localStorage.setItem("theme", nextTheme);
   };
 
-  // Compile Slide Items depending on folder selection & tab choices
-  let slideItems = [];
-  if (selectedProjectId === null) {
-    // All Projects selected: Flatten all slides
-    projects.forEach((proj) => {
-      proj.slides?.forEach((slide) => {
-        slideItems.push({
-          ...slide,
-          project: proj,
-        });
-      });
-    });
-  } else {
-    // Specific Project selected: Filter slides belonging to it
-    const activeProject = projects.find((p) => p.projectId === selectedProjectId);
-    if (activeProject) {
-      activeProject.slides?.forEach((slide) => {
-        slideItems.push({
-          ...slide,
-          project: activeProject,
-        });
-      });
-    }
-  }
+  const loggedInUserId = user?._id || user?.id;
+  const activeProject = projects.find((p) => p.projectId === selectedProjectId);
+  const totalSlides = projects.reduce((sum, project) => sum + (project.slides?.length || 0), 0);
+  const createdByMeCount = projects.filter((project) => {
+    const creatorId = project.creator?._id || project.creator;
+    return loggedInUserId && creatorId && creatorId.toString() === loggedInUserId.toString();
+  }).length;
 
-  // Filter based on selected tabs
+  let slideItems = [];
+  const sourceProjects = selectedProjectId === null ? projects : activeProject ? [activeProject] : [];
+  sourceProjects.forEach((project) => {
+    project.slides?.forEach((slide) => {
+      slideItems.push({ ...slide, project });
+    });
+  });
+
   if (activeTab === "recents") {
-    // Sort by last modified slides
     slideItems = [...slideItems].sort((a, b) => {
-      const dateA = new Date(a.project?.createdAt);
-      const dateB = new Date(b.project?.createdAt);
+      const dateA = new Date(a.lastModifiedAt || a.project?.createdAt || 0);
+      const dateB = new Date(b.lastModifiedAt || b.project?.createdAt || 0);
       return dateB - dateA;
     });
   } else if (activeTab === "created-by-me") {
-    // Filter created by logged in user
-    slideItems = slideItems.filter(
-      (s) => s.project?.creator?._id === user?.id || s.project?.creator === user?.id
-    );
+    slideItems = slideItems.filter((slide) => {
+      const creatorId = slide.project?.creator?._id || slide.project?.creator;
+      return loggedInUserId && creatorId && creatorId.toString() === loggedInUserId.toString();
+    });
   }
 
-  // Filter slide items by search query
-  const filteredSlides = slideItems.filter((slide) =>
-    slide.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredSlides = slideItems.filter((slide) => {
+    if (!normalizedSearch) return true;
+    return (
+      slide.name.toLowerCase().includes(normalizedSearch) ||
+      slide.project?.name?.toLowerCase().includes(normalizedSearch)
+    );
+  });
 
-  // B&W theme classes
-  const bgClass = isDark ? "bg-[#0c0c0e] text-white" : "bg-[#f9f9fb] text-neutral-900";
-  const sidebarBg = isDark ? "bg-black border-white/10" : "bg-white border-neutral-200";
-  const mainBg = isDark ? "bg-[#0c0c0e]" : "bg-[#fcfcfd]";
-  const borderClass = isDark ? "border-white/10" : "border-neutral-200/80";
-  const textMuted = isDark ? "text-white/40" : "text-neutral-400";
-  const textSecondary = isDark ? "text-white/60" : "text-neutral-500";
-  const listHoverClass = isDark ? "hover:bg-white/5" : "hover:bg-neutral-50";
+  const filteredProjects = projects.filter((project) => {
+    if (!normalizedSearch) return true;
+    return project.name.toLowerCase().includes(normalizedSearch);
+  });
 
-  // Active folder styling classes (visible dark color / black on left nav in light mode)
-  const activeFolderClass = isDark 
-    ? "bg-white/10 text-white border-transparent" 
-    : "bg-neutral-950 text-white border-transparent shadow-md";
-
-  // Format date helper
   const formatDate = (dateStr) => {
     if (!dateStr) return "---";
     const date = new Date(dateStr);
@@ -133,460 +191,479 @@ export default function Dashboard() {
     const diffDays = Math.floor(diffHours / 24);
 
     if (diffHours < 1) return "Just now";
-    if (diffHours < 24) return `${diffHours} hrs ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays === 1) return "Yesterday";
-    if (diffDays < 30) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${diffDays}d ago`;
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
+  const shellClass = isDark ? "bg-[#08080a] text-white" : "bg-[#f4f4f5] text-neutral-950";
+  const sidebarClass = isDark ? "bg-black border-white/10" : "bg-white border-neutral-200";
+  const panelClass = isDark ? "bg-[#0e0e11] border-white/10" : "bg-white border-neutral-200";
+  const panelSoftClass = isDark ? "bg-white/[0.035] border-white/10" : "bg-neutral-50 border-neutral-200";
+  const borderClass = isDark ? "border-white/10" : "border-neutral-200";
+  const textMuted = isDark ? "text-white/42" : "text-neutral-500";
+  const textSubtle = isDark ? "text-white/62" : "text-neutral-600";
+  const hoverClass = isDark ? "hover:bg-white/[0.06]" : "hover:bg-neutral-100";
+  const activeClass = isDark ? "bg-white text-black" : "bg-neutral-950 text-white";
+
+  const tabs = [
+    { id: "all", label: "All", count: slideItems.length },
+    { id: "recents", label: "Recents", count: filteredSlides.length },
+    { id: "created-by-me", label: "Created by Me", count: createdByMeCount },
+    { id: "folders", label: "Folders", count: projects.length },
+  ];
+
   return (
-    <div className={`min-h-screen font-sans antialiased flex transition-colors duration-300 ${bgClass}`}>
-      
-      {/* 1. LEFT SIDEBAR (Roshan's Team Layout) */}
-      <aside className={`w-64 border-r flex flex-col justify-between p-5 shrink-0 select-none ${sidebarBg}`}>
-        <div className="flex flex-col gap-6">
-          {/* Logo / Team Selector Header */}
-          <div className="flex items-center justify-between p-2 rounded-xl transition-colors hover:bg-white/5 cursor-pointer">
-            <div className="flex items-center gap-3">
-              <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs ${
-                isDark ? "bg-white text-black" : "bg-neutral-950 text-white"
-              }`}>
-                ▲
-              </div>
-              <span className="font-extrabold text-[14px] tracking-tight truncate max-w-[120px]">
-                {user?.username}&apos;s Team
-              </span>
+    <div className={`min-h-screen font-sans antialiased transition-colors duration-300 ${shellClass}`}>
+      <div className="flex min-h-screen">
+        <aside className={`hidden lg:flex w-[272px] shrink-0 flex-col border-r ${sidebarClass}`}>
+          <div className="flex h-16 items-center gap-3 border-b px-5 border-inherit">
+            <div className={`flex h-9 w-9 items-center justify-center rounded-lg border ${isDark ? "bg-white text-black border-white" : "bg-black text-white border-black"}`}>
+              <Icon name="logo" className="h-4 w-4" />
             </div>
-            <span className={`text-[10px] ${textMuted}`}>▼</span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-extrabold tracking-tight">CollaboDraw</p>
+              <p className={`truncate text-[11px] font-medium ${textMuted}`}>{user?.username || "Workspace"} workspace</p>
+            </div>
           </div>
 
-          {/* Navigation Section */}
-          <div className="flex flex-col gap-1">
-            <div
-              onClick={() => setSelectedProjectId(null)}
-              className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                selectedProjectId === null
-                  ? activeFolderClass
-                  : `${listHoverClass} ${textSecondary}`
-              }`}
+          <div className="flex-1 overflow-y-auto p-4">
+            <button
+              onClick={() => {
+                setSelectedProjectId(null);
+                setActiveTab("all");
+              }}
+              className={`mb-5 flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-bold transition ${selectedProjectId === null ? activeClass : `${hoverClass} ${textSubtle}`}`}
             >
-              <div className="flex items-center gap-2.5">
-                <span>📁</span>
-                <span>All Files</span>
-              </div>
-              <span className={`text-[9px] px-1.5 py-0.5 rounded border ${isDark ? "border-white/10 bg-white/5 text-white/40" : "border-neutral-200 bg-neutral-50 text-neutral-400"}`}>A</span>
-            </div>
-          </div>
+              <span className="flex items-center gap-2.5">
+                <Icon name="folder" className="h-4 w-4" />
+                All Files
+              </span>
+              <span className="text-[10px] opacity-70">{totalSlides}</span>
+            </button>
 
-          {/* Team Folders Section — Lists active Project Folders */}
-          <div>
-            <div className="flex items-center justify-between px-3.5 mb-2.5">
-              <span className={`text-[10px] font-extrabold tracking-wider uppercase ${textMuted}`}>Team Folders</span>
-              <button onClick={() => setShowCreateModal(true)} className={`text-xs hover:text-white ${textMuted}`}>+</button>
+            <div className="mb-3 flex items-center justify-between px-2">
+              <span className={`text-[10px] font-extrabold uppercase tracking-[0.18em] ${textMuted}`}>Projects</span>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className={`flex h-7 w-7 items-center justify-center rounded-md border transition ${borderClass} ${hoverClass}`}
+                title="Create project"
+              >
+                <Icon name="plus" className="h-3.5 w-3.5" />
+              </button>
             </div>
-            <div className="flex flex-col gap-1 max-h-60 overflow-y-auto">
-              {projects.map((proj) => {
-                const isActive = selectedProjectId === proj.projectId;
+
+            <div className="flex flex-col gap-1">
+              {projects.map((project) => {
+                const isActive = selectedProjectId === project.projectId;
                 return (
-                  <div
-                    key={proj.projectId}
-                    onClick={() => setSelectedProjectId(proj.projectId)}
-                    className={`flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-all ${
-                      isActive
-                        ? activeFolderClass
-                        : `${listHoverClass} ${textSecondary}`
-                    }`}
+                  <button
+                    key={project.projectId}
+                    onClick={() => {
+                      setSelectedProjectId(project.projectId);
+                      if (activeTab === "folders") setActiveTab("all");
+                    }}
+                    className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-xs font-semibold transition ${isActive ? activeClass : `${hoverClass} ${textSubtle}`}`}
                   >
-                    <span>📁</span>
-                    <span className="truncate">{proj.name}</span>
-                  </div>
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <Icon name="folder" className="h-4 w-4 shrink-0" />
+                      <span className="truncate">{project.name}</span>
+                    </span>
+                    <span className="shrink-0 text-[10px] opacity-65">{project.slides?.length || 0}</span>
+                  </button>
                 );
               })}
             </div>
           </div>
-        </div>
 
-        {/* Sidebar Bottom Action Buttons */}
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className={`w-full flex items-center justify-center gap-1.5 font-bold text-xs py-3 rounded-xl transition-all duration-150 active:scale-95 border ${
-              isDark
-                ? "bg-white text-black hover:bg-neutral-100 border-transparent"
-                : "bg-neutral-900 text-white hover:bg-neutral-800 border-neutral-900 shadow-md"
-            }`}
-          >
-            <span>+ New File</span>
-            <span className="opacity-40">^ N</span>
-          </button>
-
-          <div className={`h-px ${borderClass}`} />
-
-          <div className="flex items-center justify-between px-2">
-            {/* Profile badge & logout button */}
-            <div className="flex items-center gap-2 text-xs font-medium">
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                isDark ? "bg-white/10 text-white" : "bg-neutral-200 text-neutral-800"
-              }`}>
-                {user?.username?.[0]?.toUpperCase()}
-              </div>
-              <span className="truncate max-w-[90px]">{user?.username}</span>
-            </div>
-            
+          <div className="border-t p-4 border-inherit">
             <button
-              onClick={handleLogout}
-              className="text-[10px] text-red-500/70 hover:text-red-500 font-bold uppercase tracking-wider transition-colors"
+              onClick={() => setShowCreateModal(true)}
+              className={`mb-4 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-xs font-extrabold transition active:scale-[0.98] ${activeClass}`}
             >
-              Logout
+              <Icon name="plus" className="h-4 w-4" />
+              New Board
             </button>
-          </div>
-        </div>
-      </aside>
 
-      {/* 2. MAIN CONTENT AREA */}
-      <main className={`flex-1 flex flex-col p-8 transition-colors duration-300 ${mainBg}`}>
-        
-        {/* Main top header bar inside content area */}
-        <header className="flex items-center justify-between border-b pb-5 mb-8 border-neutral-200/50">
-          {/* Main workspace navigation tabs */}
-          <div className="flex items-center gap-5 text-xs font-bold">
-            <span
-              onClick={() => setActiveTab("all")}
-              className={`cursor-pointer pb-2 transition-all ${
-                activeTab === "all"
-                  ? (isDark ? "border-b-2 border-white text-white" : "border-b-2 border-neutral-900 text-neutral-900")
-                  : `${textMuted} hover:text-neutral-500`
-              }`}
-            >
-              All
-            </span>
-            <span
-              onClick={() => setActiveTab("recents")}
-              className={`cursor-pointer pb-2 transition-all ${
-                activeTab === "recents"
-                  ? (isDark ? "border-b-2 border-white text-white" : "border-b-2 border-neutral-900 text-neutral-900")
-                  : `${textMuted} hover:text-neutral-500`
-              }`}
-            >
-              Recents
-            </span>
-            <span
-              onClick={() => setActiveTab("created-by-me")}
-              className={`cursor-pointer pb-2 transition-all ${
-                activeTab === "created-by-me"
-                  ? (isDark ? "border-b-2 border-white text-white" : "border-b-2 border-neutral-900 text-neutral-900")
-                  : `${textMuted} hover:text-neutral-500`
-              }`}
-            >
-              Created by Me
-            </span>
-            <span
-              onClick={() => setActiveTab("folders")}
-              className={`cursor-pointer pb-2 transition-all ${
-                activeTab === "folders"
-                  ? (isDark ? "border-b-2 border-white text-white" : "border-b-2 border-neutral-900 text-neutral-900")
-                  : `${textMuted} hover:text-neutral-500`
-              }`}
-            >
-              Folders
-            </span>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Search Input Box */}
-            <div className={`flex items-center gap-2 border rounded-xl px-3 py-1.5 w-60 ${borderClass} ${
-              isDark ? "bg-white/[0.02]" : "bg-white shadow-sm"
-            }`}>
-              <span className="text-xs">🔍</span>
-              <input
-                type="text"
-                placeholder="Search slides..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-transparent text-xs placeholder-neutral-400 outline-none w-full"
-              />
-              <span className={`text-[8px] px-1 rounded border font-mono ${isDark ? "border-white/10 bg-white/5 text-white/30" : "border-neutral-200 bg-neutral-50 text-neutral-400"}`}>⌘K</span>
-            </div>
-
-            {/* Theme Toggle Button */}
-            <button
-              onClick={toggleTheme}
-              className={`p-2 rounded-xl border transition-all duration-200 hover:scale-105 ${borderClass} ${
-                isDark ? "bg-white/5 hover:bg-white/10 text-white" : "bg-white hover:bg-neutral-50 shadow-sm text-neutral-800"
-              }`}
-              title={isDark ? "Switch to Premium White" : "Switch to Dark Mode"}
-            >
-              {isDark ? (
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <circle cx="8" cy="8" r="3" />
-                  <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.4 1.4M11.55 11.55l1.4 1.4" strokeLinecap="round"/>
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <path d="M12 10.5a5 5 0 1 1-5-8.5A5.5 5.5 0 1 0 12 10.5z" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              )}
-            </button>
-          </div>
-        </header>
-
-        {/* 3. CREATE BLANK CARD SECTION (Middle area) */}
-        <section className="mb-10">
-          <div
-            onClick={() => setShowCreateModal(true)}
-            className={`w-64 h-36 border rounded-2xl flex flex-col justify-between p-5 cursor-pointer transition-all duration-200 hover:scale-[1.02] ${
-              isDark
-                ? "bg-white/[0.01] hover:bg-white/[0.03] border-white/10"
-                : "bg-white hover:bg-neutral-50/50 border-neutral-200/80 shadow-sm"
-            }`}
-          >
-            <div className={`text-2xl font-semibold opacity-40`}>+</div>
-            <div>
-              <h3 className="text-xs font-extrabold tracking-tight">Create a Blank File</h3>
-              <p className={`text-[10px] mt-0.5 ${textMuted}`}>Start drawing instantly on a clean whiteboard canvas.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* 4. DIRECTORY SLIDES TABLE LIST (Bottom area) */}
-        <section className="flex-1 flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xs font-extrabold uppercase tracking-wider">
-              {selectedProjectId === null ? "All Board Slides" : "Project Slides"}
-            </h2>
-            <span className={`text-[10px] font-bold ${textMuted}`}>{filteredSlides.length} total slides</span>
-          </div>
-
-          {loading ? (
-            /* Loader skeleton */
-            <div className="flex flex-col gap-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className={`h-14 rounded-xl border animate-pulse ${borderClass} ${isDark ? "bg-white/[0.01]" : "bg-white"}`} />
-              ))}
-            </div>
-          ) : filteredSlides.length === 0 ? (
-            /* Empty state */
-            <div className={`text-center py-20 border border-dashed rounded-3xl ${borderClass} ${isDark ? "bg-white/[0.005]" : "bg-neutral-50/50"}`}>
-              <span className="text-3xl block mb-3">📂</span>
-              <h3 className="font-extrabold text-sm mb-1 tracking-tight">No slide canvases found</h3>
-              <p className={`text-xs ${textMuted} max-w-xs mx-auto mb-5`}>
-                Click the &quot;New File&quot; sidebar button to add a new project space and slides.
-              </p>
-            </div>
-          ) : (
-            /* Structured Slide Directory Table */
-            <div className={`border rounded-2xl overflow-hidden ${borderClass} ${isDark ? "bg-black" : "bg-white shadow-sm"}`}>
-              
-              {/* Dynamic Table Header depends on whether "All Files" (extra project column) or single project is selected */}
-              <div className={`hidden md:grid grid-cols-12 gap-4 px-6 py-3.5 text-[10px] font-bold uppercase tracking-wider border-b ${borderClass} ${
-                isDark ? "bg-white/[0.015] text-white/30" : "bg-neutral-50/80 text-neutral-400"
-              }`}>
-                {selectedProjectId === null ? (
-                  // Headers with Project Name Column (All Projects selected)
-                  <>
-                    <div className="col-span-4">Name</div>
-                    <div className="col-span-3">Project Name</div>
-                    <div className="col-span-2">Created</div>
-                    <div className="col-span-2">Author</div>
-                    <div className="col-span-1 text-right">Actions</div>
-                  </>
-                ) : (
-                  // Headers for a single project selection (No project name column needed)
-                  <>
-                    <div className="col-span-5">Name</div>
-                    <div className="col-span-3">Created</div>
-                    <div className="col-span-3">Author</div>
-                    <div className="col-span-1 text-right">Actions</div>
-                  </>
-                )}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-extrabold ${isDark ? "border-white/10 bg-white/10" : "border-neutral-200 bg-neutral-100"}`}>
+                  {user?.username?.[0]?.toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-bold">{user?.username}</p>
+                  <p className={`text-[10px] font-medium ${textMuted}`}>Signed in</p>
+                </div>
               </div>
-
-              {/* Rows list */}
-              <div className={`divide-y ${isDark ? "divide-white/5" : "divide-neutral-100"}`}>
-                {filteredSlides.map((slide) => {
-                  const loggedInUserId = user?._id || user?.id;
-                  const creatorId = slide.project?.creator?._id || slide.project?.creator;
-                  const isCreator = loggedInUserId && creatorId && (creatorId.toString() === loggedInUserId.toString());
-                  const targetLink = `/room/${slide.project?.projectId}?slide=${slide.slideId}`;
-
-                  return (
-                    <div
-                      key={slide.slideId}
-                      className={`grid grid-cols-1 md:grid-cols-12 gap-4 items-center px-6 py-4 transition-colors duration-100 ${listHoverClass}`}
-                    >
-                      {selectedProjectId === null ? (
-                        // 1. ALL FILES SELECTED LAYOUT (Colspan adjusted for Project Name column)
-                        <>
-                          {/* Slide Name */}
-                          <div className="col-span-12 md:col-span-4 flex items-center gap-3.5">
-                            <span className="text-base select-none shrink-0">📄</span>
-                            <div className="truncate">
-                              <Link
-                                to={targetLink}
-                                className="font-extrabold text-sm hover:underline leading-snug tracking-tight"
-                              >
-                                {slide.name}
-                              </Link>
-                              <span className={`block text-[10px] md:hidden mt-0.5 ${textMuted}`}>
-                                Project: {slide.project?.name} · {formatDate(slide.project?.createdAt)}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Extra Column: Project Name */}
-                          <div className="hidden md:block col-span-3 text-xs font-bold truncate">
-                            <span className={textSecondary}>{slide.project?.name}</span>
-                          </div>
-
-                          {/* Created date */}
-                          <div className="hidden md:block col-span-2 text-xs font-semibold">
-                            <span className={textSecondary}>{formatDate(slide.project?.createdAt)}</span>
-                          </div>
-
-                          {/* Author badge */}
-                          <div className="hidden md:block col-span-2 text-xs">
-                            <div className="flex items-center gap-2">
-                              <div
-                                title={slide.project?.creator?.username}
-                                className={`w-5.5 h-5.5 rounded-full flex items-center justify-center text-[9px] font-extrabold border shrink-0 ${
-                                  isDark ? "bg-neutral-800 border-white/10 text-white/70" : "bg-neutral-100 border-neutral-200 text-neutral-700"
-                                }`}
-                              >
-                                {slide.project?.creator?.username?.[0]?.toUpperCase()}
-                              </div>
-                              <span className={`font-semibold truncate max-w-[80px] ${textSecondary}`}>
-                                {isCreator ? "You" : slide.project?.creator?.username}
-                              </span>
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        // 2. SINGLE PROJECT SELECTED LAYOUT
-                        <>
-                          {/* Slide Name */}
-                          <div className="col-span-12 md:col-span-5 flex items-center gap-3.5">
-                            <span className="text-base select-none shrink-0">📄</span>
-                            <div className="truncate">
-                              <Link
-                                to={targetLink}
-                                className="font-extrabold text-sm hover:underline leading-snug tracking-tight"
-                              >
-                                {slide.name}
-                              </Link>
-                              <span className={`block text-[10px] md:hidden mt-0.5 ${textMuted}`}>
-                                {formatDate(slide.project?.createdAt)}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Created date */}
-                          <div className="hidden md:block col-span-3 text-xs font-semibold">
-                            <span className={textSecondary}>{formatDate(slide.project?.createdAt)}</span>
-                          </div>
-
-                          {/* Author badge */}
-                          <div className="hidden md:block col-span-3 text-xs">
-                            <div className="flex items-center gap-2">
-                              <div
-                                title={slide.project?.creator?.username}
-                                className={`w-5.5 h-5.5 rounded-full flex items-center justify-center text-[9px] font-extrabold border shrink-0 ${
-                                  isDark ? "bg-neutral-800 border-white/10 text-white/70" : "bg-neutral-100 border-neutral-200 text-neutral-700"
-                                }`}
-                              >
-                                {slide.project?.creator?.username?.[0]?.toUpperCase()}
-                              </div>
-                              <span className={`font-semibold truncate max-w-[120px] ${textSecondary}`}>
-                                {isCreator ? "You" : slide.project?.creator?.username}
-                              </span>
-                            </div>
-                          </div>
-                        </>
-                      )}
-
-                      {/* Join slide link */}
-                      <div className="col-span-12 md:col-span-1 text-right">
-                        <Link
-                          to={targetLink}
-                          className={`inline-flex items-center justify-center text-xs font-bold px-3 py-1.5 rounded-lg border transition-all duration-100 ${
-                            isDark
-                              ? "bg-white/5 border-white/10 text-white/80 hover:bg-white/10"
-                              : "bg-white border-neutral-200 text-neutral-700 hover:bg-neutral-50 shadow-sm"
-                          }`}
-                        >
-                          Open
-                        </Link>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </section>
-      </main>
-
-      {/* 5. CREATE FILE SPACE DIALOG OVERLAY MODAL */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div
-            className={`w-full max-w-sm border rounded-2xl p-6 shadow-2xl transition-colors duration-300 ${
-              isDark ? "bg-[#0d0d0f] border-white/10 text-white" : "bg-white border-neutral-200 text-neutral-900"
-            }`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="font-extrabold text-sm tracking-tight">Create a New File</h3>
               <button
-                onClick={() => { setShowCreateModal(false); setName(""); setError(""); }}
-                className={`text-xs ${textMuted} hover:text-white`}
+                onClick={handleLogout}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition ${borderClass} ${hoverClass}`}
+                title="Logout"
               >
-                ✕
+                <Icon name="logout" className="h-4 w-4" />
               </button>
             </div>
-            <p className={`text-[10px] mb-4 ${textMuted}`}>Create a collaborative board, invite other team members by searching their names.</p>
+          </div>
+        </aside>
+
+        <main className="flex min-w-0 flex-1 flex-col">
+          <header className={`sticky top-0 z-20 border-b backdrop-blur-xl ${isDark ? "border-white/10 bg-[#08080a]/88" : "border-neutral-200 bg-[#f4f4f5]/88"}`}>
+            <div className="flex min-h-16 flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+              <div className="flex min-w-0 items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className={`text-[11px] font-bold uppercase tracking-[0.18em] ${textMuted}`}>
+                    {selectedProjectId === null ? "Workspace" : "Project"}
+                  </p>
+                  <h1 className="truncate text-xl font-extrabold tracking-tight sm:text-2xl">
+                    {selectedProjectId === null ? `${user?.username || "Your"} boards` : activeProject?.name}
+                  </h1>
+                </div>
+
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border lg:hidden ${activeClass}`}
+                  title="New board"
+                >
+                  <Icon name="plus" className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className={`flex h-10 min-w-0 items-center gap-2 rounded-lg border px-3 ${panelClass} sm:w-72`}>
+                  <Icon name="search" className={`h-4 w-4 shrink-0 ${textMuted}`} />
+                  <input
+                    type="text"
+                    placeholder={activeTab === "folders" ? "Search projects" : "Search boards or projects"}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-neutral-500"
+                  />
+                </div>
+
+                <button
+                  onClick={toggleTheme}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg border transition ${panelClass} ${hoverClass}`}
+                  title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  <Icon name={isDark ? "sun" : "moon"} className="h-4 w-4" />
+                </button>
+
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className={`hidden h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-extrabold transition active:scale-[0.98] lg:flex ${activeClass}`}
+                >
+                  <Icon name="plus" className="h-4 w-4" />
+                  New Board
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <div className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+            <section className="mb-6 grid gap-3 sm:grid-cols-3">
+              <div className={`rounded-lg border p-4 ${panelClass}`}>
+                <div className="mb-3 flex items-center justify-between">
+                  <span className={`text-[11px] font-bold uppercase tracking-[0.16em] ${textMuted}`}>Projects</span>
+                  <Icon name="folder" className={`h-4 w-4 ${textMuted}`} />
+                </div>
+                <p className="text-2xl font-extrabold tracking-tight">{projects.length}</p>
+              </div>
+
+              <div className={`rounded-lg border p-4 ${panelClass}`}>
+                <div className="mb-3 flex items-center justify-between">
+                  <span className={`text-[11px] font-bold uppercase tracking-[0.16em] ${textMuted}`}>Slides</span>
+                  <Icon name="file" className={`h-4 w-4 ${textMuted}`} />
+                </div>
+                <p className="text-2xl font-extrabold tracking-tight">{totalSlides}</p>
+              </div>
+
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className={`rounded-lg border p-4 text-left transition ${panelSoftClass} ${hoverClass}`}
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <span className={`text-[11px] font-bold uppercase tracking-[0.16em] ${textMuted}`}>Quick Start</span>
+                  <Icon name="plus" className="h-4 w-4" />
+                </div>
+                <p className="text-sm font-extrabold">Create a blank board</p>
+                <p className={`mt-1 text-xs ${textMuted}`}>Open a fresh collaborative canvas.</p>
+              </button>
+            </section>
+
+            <section className={`mb-6 w-full overflow-x-auto sm:w-fit sm:max-w-full rounded-lg border p-1 ${panelClass}`}>
+              <div className="flex w-max items-center gap-1">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-2 rounded-md px-3.5 py-2 text-xs font-extrabold transition ${
+                      activeTab === tab.id ? activeClass : `${textSubtle} ${hoverClass}`
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span className="text-[10px] opacity-65">{tab.count}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {activeTab === "folders" ? (
+              <section>
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-extrabold tracking-tight">Project folders</h2>
+                    <p className={`mt-1 text-xs ${textMuted}`}>{filteredProjects.length} folders visible</p>
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {[1, 2, 3].map((item) => (
+                      <div key={item} className={`h-32 animate-pulse rounded-lg border ${panelClass}`} />
+                    ))}
+                  </div>
+                ) : filteredProjects.length === 0 ? (
+                  <EmptyState
+                    isDark={isDark}
+                    borderClass={borderClass}
+                    textMuted={textMuted}
+                    onCreate={() => setShowCreateModal(true)}
+                    title="No projects found"
+                    description="Create a board or adjust your search to reveal existing projects."
+                  />
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {filteredProjects.map((project) => (
+                      <button
+                        key={project.projectId}
+                        onClick={() => {
+                          setSelectedProjectId(project.projectId);
+                          setActiveTab("all");
+                        }}
+                        className={`rounded-lg border p-4 text-left transition ${panelClass} ${hoverClass}`}
+                      >
+                        <div className="mb-5 flex items-start justify-between gap-3">
+                          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${panelSoftClass}`}>
+                            <Icon name="folder" className="h-5 w-5" />
+                          </div>
+                          <span className={`rounded-md border px-2 py-1 text-[10px] font-bold ${borderClass} ${textMuted}`}>
+                            {project.projectId}
+                          </span>
+                        </div>
+                        <h3 className="truncate text-sm font-extrabold">{project.name}</h3>
+                        <div className={`mt-3 flex items-center justify-between text-xs ${textMuted}`}>
+                          <span>{project.slides?.length || 0} slides</span>
+                          <span>{formatDate(project.createdAt)}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
+            ) : (
+              <section>
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="text-sm font-extrabold tracking-tight">
+                      {selectedProjectId === null ? "Board slides" : `${activeProject?.name || "Project"} slides`}
+                    </h2>
+                    <p className={`mt-1 text-xs ${textMuted}`}>{filteredSlides.length} slides visible</p>
+                  </div>
+                </div>
+
+                {loading ? (
+                  <div className={`overflow-hidden rounded-lg border ${panelClass}`}>
+                    {[1, 2, 3, 4].map((item) => (
+                      <div key={item} className={`h-16 animate-pulse border-b last:border-b-0 ${borderClass} ${isDark ? "bg-white/[0.02]" : "bg-neutral-50"}`} />
+                    ))}
+                  </div>
+                ) : filteredSlides.length === 0 ? (
+                  <EmptyState
+                    isDark={isDark}
+                    borderClass={borderClass}
+                    textMuted={textMuted}
+                    onCreate={() => setShowCreateModal(true)}
+                    title="No slides found"
+                    description="Create a new board or adjust your filters to find a slide."
+                  />
+                ) : (
+                  <div className={`overflow-hidden rounded-lg border ${panelClass}`}>
+                    <div className={`hidden grid-cols-12 gap-4 border-b px-5 py-3 text-[10px] font-extrabold uppercase tracking-[0.16em] md:grid ${borderClass} ${textMuted}`}>
+                      <div className={selectedProjectId === null ? "col-span-3" : "col-span-4"}>Name</div>
+                      {selectedProjectId === null && <div className="col-span-2">Project</div>}
+                      <div className="col-span-3">Last Change</div>
+                      <div className="col-span-2">Created</div>
+                      <div className={selectedProjectId === null ? "col-span-1" : "col-span-2"}>Owner</div>
+                      <div className="col-span-1 text-right">Open</div>
+                    </div>
+
+                    <div className={`divide-y ${isDark ? "divide-white/[0.06]" : "divide-neutral-100"}`}>
+                      {filteredSlides.map((slide) => {
+                        const creatorId = slide.project?.creator?._id || slide.project?.creator;
+                        const isCreator = loggedInUserId && creatorId && creatorId.toString() === loggedInUserId.toString();
+                        const targetLink = `/room/${slide.project?.projectId}?slide=${slide.slideId}`;
+                        const lastChange = slide.lastModifiedAt || slide.project?.createdAt;
+
+                        return (
+                          <div
+                            key={`${slide.project?.projectId}-${slide.slideId}`}
+                            className={`grid grid-cols-1 gap-4 px-5 py-4 transition md:grid-cols-12 md:items-center ${hoverClass}`}
+                          >
+                            <div className={`${selectedProjectId === null ? "md:col-span-3" : "md:col-span-4"} flex min-w-0 items-center gap-3`}>
+                              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border ${panelSoftClass}`}>
+                                <Icon name="file" className="h-5 w-5" />
+                              </div>
+                              <div className="min-w-0">
+                                <Link to={targetLink} className="block truncate text-sm font-extrabold hover:underline">
+                                  {slide.name}
+                                </Link>
+                                <p className={`mt-1 truncate text-xs md:hidden ${textMuted}`}>
+                                  {slide.project?.name} / {formatDate(lastChange)}
+                                </p>
+                              </div>
+                            </div>
+
+                            {selectedProjectId === null && (
+                              <div className="hidden min-w-0 md:col-span-2 md:block">
+                                <span className={`block truncate text-xs font-bold ${textSubtle}`}>{slide.project?.name}</span>
+                              </div>
+                            )}
+
+                            <div className="hidden md:col-span-3 md:block">
+                              <div className="flex items-center gap-2">
+                                <Icon name="clock" className={`h-4 w-4 shrink-0 ${textMuted}`} />
+                                <div className="min-w-0">
+                                  <p className={`truncate text-xs font-semibold ${textSubtle}`}>{formatDate(lastChange)}</p>
+                                  {(slide.lastModifiedBy?.username || slide.project?.creator?.username) && (
+                                    <p className={`mt-0.5 truncate text-[10px] ${textMuted}`}>
+                                      by {slide.lastModifiedBy?.username || slide.project?.creator?.username}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="hidden md:col-span-2 md:block">
+                              <span className={`text-xs font-semibold ${textSubtle}`}>{formatDate(slide.project?.createdAt)}</span>
+                            </div>
+
+                            <div className={`hidden ${selectedProjectId === null ? "md:col-span-1" : "md:col-span-2"} md:block`}>
+                              <div className="flex min-w-0 items-center gap-2">
+                                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[10px] font-extrabold ${panelSoftClass}`}>
+                                  {slide.project?.creator?.username?.[0]?.toUpperCase()}
+                                </div>
+                                <span className={`truncate text-xs font-semibold ${textSubtle}`}>
+                                  {isCreator ? "You" : slide.project?.creator?.username}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-end md:col-span-1">
+                              <Link
+                                to={targetLink}
+                                className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-extrabold transition ${panelSoftClass} ${hoverClass}`}
+                              >
+                                <Icon name="open" className="h-3.5 w-3.5" />
+                                <span className="md:hidden xl:inline">Open</span>
+                              </Link>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
+          </div>
+        </main>
+      </div>
+
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className={`w-full max-w-md rounded-lg border p-6 shadow-2xl ${panelClass}`}>
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-extrabold tracking-tight">Create a new board</h3>
+                <p className={`mt-1 text-xs ${textMuted}`}>Name the workspace and jump straight into the canvas.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setName("");
+                  setError("");
+                }}
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm font-bold ${borderClass} ${hoverClass}`}
+                title="Close"
+              >
+                x
+              </button>
+            </div>
 
             {error && (
-              <div className="mb-4 text-[10px] text-red-400 bg-red-950/20 border border-red-900/50 p-2 rounded-lg">
+              <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs font-semibold text-red-300">
                 {error}
               </div>
             )}
 
-            <form onSubmit={handleCreate} className="flex flex-col gap-3">
-              <input
-                type="text"
-                placeholder="Enter file/project name..."
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                autoFocus
-                className={`w-full border rounded-xl px-3.5 py-2.5 text-xs outline-none focus:border-white/30 ${
-                  isDark ? "bg-white/5 border-white/10 text-white" : "bg-neutral-50 border-neutral-200 text-neutral-900"
-                }`}
-              />
+            <form onSubmit={handleCreate} className="flex flex-col gap-4">
+              <label className="flex flex-col gap-2">
+                <span className={`text-[11px] font-extrabold uppercase tracking-[0.16em] ${textMuted}`}>Board name</span>
+                <input
+                  type="text"
+                  placeholder="Product sketch, sprint map, wireframe..."
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  autoFocus
+                  className={`h-11 rounded-lg border px-3.5 text-sm outline-none transition focus:border-current ${isDark ? "bg-white/5 border-white/10 text-white placeholder:text-white/28" : "bg-neutral-50 border-neutral-200 text-neutral-950 placeholder:text-neutral-400"}`}
+                />
+              </label>
 
-              <div className="flex gap-2 justify-end mt-2">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => { setShowCreateModal(false); setName(""); setError(""); }}
-                  className={`text-[10px] font-bold px-3 py-2 rounded-lg border ${
-                    isDark ? "border-white/10 hover:bg-white/5 text-white/70" : "border-neutral-200 hover:bg-neutral-50 text-neutral-600"
-                  }`}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setName("");
+                    setError("");
+                  }}
+                  className={`h-10 rounded-lg border px-4 text-xs font-extrabold transition ${borderClass} ${hoverClass}`}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={createLoading || !name.trim()}
-                  className={`text-[10px] font-bold px-4 py-2 rounded-lg ${
-                    isDark ? "bg-white text-black hover:bg-neutral-100" : "bg-neutral-900 text-white hover:bg-neutral-800"
-                  }`}
+                  className={`h-10 rounded-lg px-4 text-xs font-extrabold transition disabled:cursor-not-allowed disabled:opacity-45 ${activeClass}`}
                 >
-                  {createLoading ? "Creating..." : "Create"}
+                  {createLoading ? "Creating..." : "Create board"}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function EmptyState({ isDark, borderClass, textMuted, title, description, onCreate }) {
+  return (
+    <div className={`flex min-h-[280px] flex-col items-center justify-center rounded-lg border border-dashed px-6 py-12 text-center ${borderClass} ${isDark ? "bg-white/[0.015]" : "bg-white"}`}>
+      <div className={`mb-4 flex h-12 w-12 items-center justify-center rounded-lg border ${borderClass} ${isDark ? "bg-white/[0.04]" : "bg-neutral-50"}`}>
+        <Icon name="folder" className="h-6 w-6" />
+      </div>
+      <h3 className="text-sm font-extrabold tracking-tight">{title}</h3>
+      <p className={`mt-2 max-w-sm text-xs leading-5 ${textMuted}`}>{description}</p>
+      <button
+        onClick={onCreate}
+        className={`mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-xs font-extrabold transition ${isDark ? "bg-white text-black hover:bg-neutral-100" : "bg-neutral-950 text-white hover:bg-neutral-800"}`}
+      >
+        <Icon name="plus" className="h-4 w-4" />
+        New Board
+      </button>
     </div>
   );
 }

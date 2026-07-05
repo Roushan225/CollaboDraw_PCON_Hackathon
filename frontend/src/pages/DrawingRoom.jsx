@@ -567,6 +567,15 @@ export default function DrawingRoom() {
   const bgClass = isDark ? "bg-[#0b0b0d] text-white" : "bg-[#f5f5f7] text-neutral-900";
   const barBgClass = isDark ? "bg-black/90 border-white/10" : "bg-white border-neutral-200 shadow-sm";
   const textMutedClass = isDark ? "text-white/40" : "text-neutral-500";
+  const headerSurfaceClass = isDark
+    ? "bg-white/[0.035] border-white/10"
+    : "bg-neutral-50 border-neutral-200";
+  const headerButtonClass = isDark
+    ? "bg-white/[0.035] border-white/10 text-white/60 hover:bg-white/10 hover:text-white"
+    : "bg-white border-neutral-200 text-neutral-500 hover:bg-neutral-50 hover:text-neutral-950 shadow-sm";
+  const rolePillClass = isReadonly
+    ? isDark ? "bg-white/5 text-white/55 border-white/10" : "bg-neutral-100 text-neutral-600 border-neutral-200"
+    : isDark ? "bg-white text-black border-white" : "bg-neutral-950 text-white border-neutral-950";
 
   // Custom keyframes for premium UI animations
   const chatStyles = `
@@ -595,26 +604,32 @@ export default function DrawingRoom() {
       <style dangerouslySetInnerHTML={{ __html: chatStyles }} />
       
       {/* Header Bar */}
-      <header className={`border-b h-24 shrink-0 px-8 flex items-center justify-between transition-colors duration-300 relative z-20 ${barBgClass}`}>
+      <header className={`border-b h-24 shrink-0 px-4 sm:px-6 lg:px-8 flex items-center gap-4 transition-colors duration-300 relative z-20 ${barBgClass}`}>
         
         {/* Left Side: Back action & Project Details */}
-        <div className="flex items-center gap-4">
-          <Link to="/" className={`hover:scale-105 transition-transform ${isDark ? "text-white/40 hover:text-white" : "text-neutral-400 hover:text-neutral-800"}`} title="Back to Dashboard">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <Link to="/" className={`h-10 w-10 shrink-0 rounded-xl border flex items-center justify-center transition-all duration-150 hover:-translate-x-0.5 ${headerButtonClass}`} title="Back to Dashboard">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M15 9H3M3 9L8 4M3 9L8 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </Link>
-          <div className={`h-4 w-px ${isDark ? "bg-white/10" : "bg-neutral-200"}`} />
           
-          <div>
-            <h1 className="font-extrabold text-sm tracking-tight">{project.name}</h1>
-            <p className={`text-[10px] ${textMutedClass}`}>ID: {project.projectId}</p>
+          <div className={`min-w-0 max-w-[300px] rounded-2xl border px-4 py-2.5 ${headerSurfaceClass}`}>
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="min-w-0 truncate text-sm font-extrabold tracking-tight">{project.name}</h1>
+              <span className={`hidden sm:inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-wide ${rolePillClass}`}>
+                {isReadonly ? "Viewer" : "Editor"}
+              </span>
+            </div>
+            <div className="mt-1 flex min-w-0 items-center gap-2">
+              <span className={`truncate text-[10px] font-medium ${textMutedClass}`}>ID {project.projectId}</span>
+              <span className={`hidden sm:inline-block h-1 w-1 shrink-0 rounded-full ${isDark ? "bg-white/20" : "bg-neutral-300"}`} />
+              <span className={`hidden sm:inline text-[10px] font-medium ${textMutedClass}`}>{project.members?.length || 0} members</span>
+            </div>
           </div>
 
-          <div className={`h-4 w-px ${isDark ? "bg-white/10" : "bg-neutral-200"}`} />
-
           {/* Members & Invites */}
-          <div className="flex items-center gap-3">
+          <div className={`hidden lg:flex items-center gap-3 rounded-2xl border px-3 py-2 ${headerSurfaceClass}`}>
             <div className="flex -space-x-1.5 overflow-visible">
               {project.members?.map((member, idx) => {
                 const isOnline = onlineUsers.some((u) => u.userId === member._id);
@@ -665,7 +680,7 @@ export default function DrawingRoom() {
                                 onClick={(e) => { e.stopPropagation(); handleRoleChange(member._id, "editor"); }}
                                 className={`flex-1 text-[9px] font-bold py-1.5 rounded-lg transition-colors ${
                                   memberRoles[member._id] !== "viewer"
-                                    ? "bg-blue-500 text-white"
+                                    ? (isDark ? "bg-white text-black" : "bg-neutral-950 text-white")
                                     : isDark ? "bg-white/5 text-white/50 hover:bg-white/10" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
                                 }`}
                               >
@@ -675,7 +690,7 @@ export default function DrawingRoom() {
                                 onClick={(e) => { e.stopPropagation(); handleRoleChange(member._id, "viewer"); }}
                                 className={`flex-1 text-[9px] font-bold py-1.5 rounded-lg transition-colors ${
                                   memberRoles[member._id] === "viewer"
-                                    ? "bg-blue-500 text-white"
+                                    ? (isDark ? "bg-white text-black" : "bg-neutral-950 text-white")
                                     : isDark ? "bg-white/5 text-white/50 hover:bg-white/10" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"
                                 }`}
                               >
@@ -716,11 +731,11 @@ export default function DrawingRoom() {
               <div className="relative">
                 <button
                   onClick={() => setShowInviteModal(!showInviteModal)}
-                  className={`text-xs font-semibold px-3.5 py-1.5 rounded-full hover:scale-105 active:scale-95 transition-all duration-150 flex items-center gap-1 ${
+                  className={`text-xs font-semibold px-3.5 py-1.5 rounded-xl active:scale-95 transition-all duration-150 flex items-center gap-1 ${
                     isDark ? "bg-white text-black hover:bg-white/90" : "bg-neutral-900 text-white hover:bg-neutral-800 shadow-sm"
                   }`}
                 >
-                  <span>+ Invite</span>
+                  <span>Invite</span>
                 </button>
 
                 {showInviteModal && (
@@ -822,9 +837,13 @@ export default function DrawingRoom() {
         </div>
 
         {/* Right Side: Square Slide cards row */}
-        <div className="flex items-center gap-6">
+        <div className="flex min-w-0 shrink-0 items-center gap-3">
+          <div className={`hidden xl:flex flex-col items-end leading-none ${textMutedClass}`}>
+            <span className="text-[9px] font-black uppercase tracking-[0.16em]">Slides</span>
+            <span className="mt-1 text-[10px] font-bold">{slides.length} total</span>
+          </div>
           {/* Horizontal Slide Cards Row */}
-          <div className="flex items-center gap-2.5 overflow-x-auto max-w-lg py-1">
+          <div className={`flex max-w-[min(44vw,560px)] items-center gap-2 overflow-x-auto rounded-2xl border p-2 ${headerSurfaceClass}`}>
             {slides.map((slide) => (
               <SlidePreviewCard
                 key={slide.slideId}
@@ -839,7 +858,7 @@ export default function DrawingRoom() {
             {/* Large + Icon Card to Create New Slide */}
             <button
               onClick={handleAddSlide}
-              className={`flex items-center justify-center w-[72px] h-[72px] rounded-xl border text-xl font-bold transition-all duration-150 ${
+              className={`flex items-center justify-center w-[72px] h-[72px] shrink-0 rounded-xl border text-xl font-bold transition-all duration-150 ${
                 isDark
                   ? "bg-white/5 border-white/10 hover:bg-white/10 text-white"
                   : "bg-white border-neutral-200 hover:bg-neutral-50 text-neutral-800 shadow-sm"

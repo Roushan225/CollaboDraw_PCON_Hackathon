@@ -29,6 +29,8 @@ const projectSchema = new mongoose.Schema({
     slideId: { type: String, required: true },
     name: { type: String, required: true },
     drawingData: { type: mongoose.Schema.Types.Mixed, default: {} },
+    lastModifiedAt: { type: Date, default: Date.now },
+    lastModifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
   }],
   messages: [{
     id: { type: String, required: true },

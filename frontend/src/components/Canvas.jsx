@@ -12,7 +12,8 @@ import {
   GeoShapeGeoStyle,
   useActions,
   useEditor,
-  useValue
+  useValue,
+  DefaultMainMenu
 } from "tldraw";
 import "tldraw/tldraw.css";
 
@@ -130,7 +131,7 @@ const CustomBottomBar = ({ isDark }) => {
 
   return (
     <>
-      <div className={`canvas-quick-actions pointer-events-auto fixed bottom-4 left-4 z-[100] flex items-center gap-1 rounded-[14px] border p-1.5 shadow-2xl backdrop-blur-xl transition-colors ${
+      <div className={`canvas-quick-actions pointer-events-auto fixed bottom-4 left-[76px] z-[100] flex items-center gap-1 rounded-[14px] border p-1.5 shadow-2xl backdrop-blur-xl transition-colors ${
         isDark ? "border-white/10 bg-[#111113]/88 text-white shadow-black/40" : "border-neutral-200 bg-white/[0.92] text-neutral-900 shadow-neutral-300/40"
       }`}>
         {/* Zoom */}
@@ -274,6 +275,33 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
     dash: 'draw',
     fill: 'none',
   });
+  const [isStylePanelExpanded, setIsStylePanelExpanded] = useState(false);
+  const styleColorOptions = [
+    { id: "black", name: "Black", value: "#1e293b" },
+    { id: "grey", name: "Grey", value: "#64748b" },
+    { id: "red", name: "Red", value: "#ef4444" },
+    { id: "orange", name: "Orange", value: "#f97316" },
+    { id: "yellow", name: "Yellow", value: "#eab308" },
+    { id: "green", name: "Green", value: "#22c55e" },
+    { id: "light-blue", name: "Cyan", value: "#06b6d4" },
+    { id: "blue", name: "Blue", value: "#3b82f6" },
+    { id: "violet", name: "Violet", value: "#8b5cf6" },
+    { id: "pink", name: "Pink", value: "#ec4899" },
+  ];
+  const strokeOptions = [
+    { id: "s", label: "S", weight: "2px" },
+    { id: "m", label: "M", weight: "4px" },
+    { id: "l", label: "L", weight: "6px" },
+    { id: "xl", label: "XL", weight: "8px" },
+  ];
+  const dashOptions = [
+    { id: "draw", label: "Draw", render: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14c2-2 4-4 8-4s6 2 8 4"/></svg> },
+    { id: "solid", label: "Solid", render: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12h16"/></svg> },
+    { id: "dashed", label: "Dash", render: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12h3M10 12h4M17 12h3"/></svg> },
+    { id: "dotted", label: "Dot", render: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg> },
+  ];
+  const activeColorOption = styleColorOptions.find((c) => c.id === activeStyles.color) || styleColorOptions[0];
+  const activeStrokeOption = strokeOptions.find((s) => s.id === activeStyles.size) || strokeOptions[1];
 
   // Query editor state to update React states with selection or active formatting styles
   const handleStyleChange = useCallback(() => {
@@ -608,18 +636,29 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
   const selectTool = (toolName) => {
     const editor = editorRef.current;
     if (!editor) return;
-    if (["ellipse", "rectangle", "triangle", "rhombus", "star", "cloud"].includes(toolName)) {
-      editor.run(() => {
-        editor.setStyleForNextShapes(GeoShapeGeoStyle, toolName);
-        editor.setCurrentTool("geo");
-      });
-      setActiveTool(toolName);
-    } else if (toolName === "highlight") {
-      editor.setCurrentTool("highlight");
-      setActiveTool("highlight");
-    } else {
-      editor.setCurrentTool(toolName);
-      setActiveTool(toolName);
+    console.log("Selecting tool:", toolName);
+    try {
+      if (["ellipse", "rectangle", "triangle", "rhombus", "star", "cloud"].includes(toolName)) {
+        editor.run(() => {
+          editor.setStyleForNextShapes(GeoShapeGeoStyle, toolName);
+          editor.setCurrentTool("geo");
+        });
+        setActiveTool(toolName);
+      } else {
+        editor.setCurrentTool(toolName);
+        setActiveTool(toolName);
+      }
+    } catch (err) {
+      console.error("Error setting tool " + toolName + ":", err);
+      // Fallback if highlight fails
+      if (toolName === "highlight") {
+        try {
+          editor.setCurrentTool("draw");
+          setActiveTool("highlight");
+        } catch (innerErr) {
+          console.error("Highlight fallback failed:", innerErr);
+        }
+      }
     }
   };
 
@@ -826,13 +865,11 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         [class*="tlui-debug-panel"], [class*="tlui-status-bar"], [data-testid="debug-panel"], .tlui-helper-buttons { 
           display: none !important; 
         }
-        /* Hide ALL native Tldraw bottom bar controls — we use our own CustomBottomBar */
+        /* Hide native Tldraw bottom bar controls (navigation-zone, minimap, etc.) */
         [class*="navigation-zone"],
-        [class*="menu-zone"],
         [class*="minimap"],
         [data-testid^="minimap"],
-        .tlui-navigation-panel,
-        .tlui-menu-zone {
+        .tlui-navigation-panel {
           display: none !important;
         }
         [class*="style-panel"] {
@@ -933,6 +970,57 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
           justify-content: center;
           transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1), background 160ms ease;
         }
+        .tlui-menu-zone {
+          position: fixed !important;
+          bottom: 16px !important;
+          left: 16px !important;
+          top: auto !important;
+          right: auto !important;
+          z-index: 1000 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          background: transparent !important;
+          border: none !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          height: 48px !important;
+          width: 48px !important;
+          pointer-events: auto !important;
+        }
+        /* Hide specific default buttons in the menu-zone, keeping only the hamburger button */
+        .tlui-menu-zone button:not([data-testid="main-menu.toggle"]),
+        .tlui-menu-zone [class*="page-menu"],
+        .tlui-menu-zone .tlui-page-menu {
+          display: none !important;
+        }
+        .tlui-menu-zone button,
+        .tlui-menu-zone [data-testid="main-menu.toggle"] {
+          height: 48px !important;
+          width: 48px !important;
+          border-radius: 14px !important;
+          border: 1px solid ${isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"} !important;
+          background: ${isDark ? "rgba(17, 17, 19, 0.88)" : "rgba(255, 255, 255, 0.92)"} !important;
+          color: ${isDark ? "#ffffff" : "#171717"} !important;
+          backdrop-filter: blur(20px) !important;
+          box-shadow: ${isDark ? "0 20px 40px rgba(0, 0, 0, 0.5)" : "0 20px 40px rgba(0, 0, 0, 0.08)"} !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          transition: background 140ms ease, border-color 140ms ease, transform 140ms ease !important;
+          cursor: pointer !important;
+        }
+        .tlui-menu-zone button:hover,
+        .tlui-menu-zone [data-testid="main-menu.toggle"]:hover {
+          background: ${isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.05)"} !important;
+          border-color: ${isDark ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)"} !important;
+        }
+        .tlui-menu-zone button:active,
+        .tlui-menu-zone [data-testid="main-menu.toggle"]:active {
+          transform: scale(0.95) !important;
+        }
         @media (max-width: 640px) {
           .canvas-quick-action-button span { display: none; }
           .canvas-quick-action-button { padding: 0 9px; }
@@ -950,7 +1038,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
         <div
           onMouseDown={handleMouseDown}
           className={`w-11 h-4 rounded-t-[14px] flex items-center justify-center border-t border-x cursor-grab active:cursor-grabbing transition-colors backdrop-blur-xl ${
-            isDark ? "bg-[#111113]/92 border-white/10 text-white/25 hover:text-white/60" : "bg-white/95 border-neutral-200 text-neutral-400 hover:text-neutral-600"
+            isDark ? "bg-[#111113]/92 border-white/10 text-white/25 hover:text-white/60" : "bg-white border-neutral-300 text-neutral-700 hover:text-neutral-950"
           } ${isDragging ? "cursor-grabbing" : ""}`}
         >
           <svg width="14" height="4" viewBox="0 0 14 4" fill="currentColor">
@@ -960,7 +1048,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
 
         {/* Tool Buttons */}
         <div className={`w-11 border p-1.5 flex flex-col gap-1 items-center rounded-b-[14px] backdrop-blur-xl shadow-2xl ${
-          isDark ? "bg-[#111113]/92 border-white/10 text-white shadow-black/50" : "bg-white/95 border-neutral-200 text-neutral-800 shadow-neutral-300/40"
+          isDark ? "bg-[#111113]/92 border-white/10 text-white shadow-black/50" : "bg-white border-neutral-300 text-neutral-950 shadow-neutral-400/30"
         }`}>
           {tools.map(({ id, icon }) => {
             const isGroup = id === "more-shapes";
@@ -989,8 +1077,8 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
                 title={isGroup ? "More Shapes" : id}
                 className={`w-8 h-8 rounded-[10px] flex items-center justify-center transition-all ${
                   isActive
-                    ? "bg-[#007aff] text-white shadow-[0_2px_8px_rgba(0,122,255,0.4)]"
-                    : isDark ? "hover:bg-white/8 text-white/70 hover:text-white" : "hover:bg-neutral-100 text-neutral-600 hover:text-neutral-900"
+                    ? isDark ? "bg-white text-black shadow-[0_8px_18px_rgba(0,0,0,0.35)]" : "bg-neutral-950 text-white shadow-[0_8px_16px_rgba(15,23,42,0.22)]"
+                    : isDark ? "hover:bg-white/8 text-white/70 hover:text-white" : "text-neutral-950 hover:bg-neutral-200"
                 }`}
               >
                 {icon}
@@ -1005,7 +1093,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
             onMouseEnter={() => setHoveredTool("undo")}
             onMouseLeave={() => setHoveredTool(null)}
             className={`w-8 h-8 rounded-[10px] flex items-center justify-center transition-all ${
-              isDark ? "hover:bg-white/8 text-white/50 hover:text-white" : "hover:bg-neutral-100 text-neutral-500 hover:text-neutral-900"
+              isDark ? "hover:bg-white/8 text-white/50 hover:text-white" : "text-neutral-800 hover:bg-neutral-200 hover:text-neutral-950"
             }`}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
@@ -1015,7 +1103,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
             onMouseEnter={() => setHoveredTool("redo")}
             onMouseLeave={() => setHoveredTool(null)}
             className={`w-8 h-8 rounded-[10px] flex items-center justify-center transition-all ${
-              isDark ? "hover:bg-white/8 text-white/50 hover:text-white" : "hover:bg-neutral-100 text-neutral-500 hover:text-neutral-900"
+              isDark ? "hover:bg-white/8 text-white/50 hover:text-white" : "text-neutral-800 hover:bg-neutral-200 hover:text-neutral-950"
             }`}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
@@ -1028,7 +1116,7 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
             onMouseEnter={() => setShowShapesMenu(true)}
             onMouseLeave={() => setShowShapesMenu(false)}
             className={`absolute left-12 w-11 border p-1.5 flex flex-col gap-1 items-center rounded-xl shadow-2xl backdrop-blur-xl flyout-hover-bridge ${
-            isDark ? "bg-[#111113]/92 border-white/10" : "bg-white/95 border-neutral-200"
+            isDark ? "bg-[#111113]/92 border-white/10" : "bg-white border-neutral-300 text-neutral-950"
           }`}
             style={{ top: `${moreShapesTop}px` }}
           >
@@ -1045,8 +1133,8 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
                   onMouseLeave={() => setHoveredTool(null)}
                   className={`w-8 h-8 rounded-[10px] flex items-center justify-center transition-all ${
                     isActive
-                      ? "bg-[#007aff] text-white shadow-[0_2px_8px_rgba(0,122,255,0.4)]"
-                      : isDark ? "hover:bg-white/8 text-white/60 hover:text-white" : "hover:bg-neutral-100 text-neutral-700 hover:text-neutral-900"
+                      ? isDark ? "bg-white text-black shadow-[0_8px_18px_rgba(0,0,0,0.35)]" : "bg-neutral-950 text-white shadow-[0_8px_16px_rgba(15,23,42,0.22)]"
+                      : isDark ? "hover:bg-white/8 text-white/60 hover:text-white" : "text-neutral-950 hover:bg-neutral-200"
                   }`}
                   title={sub.id}
                 >
@@ -1095,16 +1183,51 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
           DebugPanel: () => null,
           DebugMenu: () => null,
           SharePanel: () => null,
-          NavigationPanel: () => null,
-          PageMenu: () => null,
           // Inject our bottom bar inside Tldraw's context (needs useEditor/useActions hooks)
           InFrontOfTheCanvas: () => <CustomBottomBar isDark={isDark} />,
-          StylePanel: () => isReadonly ? null : (
+          StylePanel: () => {
+            if (isReadonly) return null;
+
+            if (!isStylePanelExpanded) {
+              return (
+                <button
+                  onClick={() => setIsStylePanelExpanded(true)}
+                  className={`fixed z-[100] top-[78px] right-4 sm:right-6 h-14 w-14 rounded-full border shadow-2xl backdrop-blur-xl transition-all duration-200 hover:scale-105 active:scale-95 ${
+                    isDark
+                      ? "bg-[#111113]/88 border-white/10 text-white shadow-black/45"
+                      : "bg-white/95 border-neutral-200 text-neutral-950 shadow-neutral-300/45"
+                  }`}
+                  style={{
+                    pointerEvents: "all",
+                    transform: isChatOpen ? "translateX(-320px)" : "translateX(0px)",
+                  }}
+                  title="Open style controls"
+                >
+                  <span
+                    className={`absolute inset-1.5 rounded-full border p-1.5 ${isDark ? "border-white/10 bg-black/20" : "border-neutral-200 bg-neutral-50"}`}
+                  >
+                    <span
+                      className="block h-full w-full rounded-full shadow-inner"
+                      style={{
+                        background: `linear-gradient(145deg, rgba(255,255,255,0.34), rgba(255,255,255,0) 42%), ${activeColorOption.value}`,
+                      }}
+                    />
+                  </span>
+                  <span className={`absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border text-[8px] font-black ${
+                    isDark ? "bg-white text-black border-black/30" : "bg-neutral-950 text-white border-white"
+                  }`}>
+                    <span className="block w-3.5 rounded-full bg-current" style={{ height: activeStrokeOption.weight }} />
+                  </span>
+                </button>
+              );
+            }
+
+            return (
             <div
-              className={`fixed z-[100] top-[70px] right-4 sm:right-6 w-full max-w-[280px] sm:w-[280px] p-4 rounded-2xl shadow-2xl backdrop-blur-2xl border transition-all duration-300 ease-out select-none flex flex-col gap-5 ${
+              className={`fixed z-[100] top-[70px] right-4 sm:right-6 w-[calc(100vw-32px)] max-w-[232px] p-1.5 rounded-[18px] shadow-2xl backdrop-blur-2xl border transition-all duration-300 ease-out select-none flex flex-col gap-1.5 ${
                 isDark 
-                  ? "bg-[#111113]/80 border-white/10 text-white shadow-black/50" 
-                  : "bg-white/90 border-neutral-200 text-neutral-800 shadow-neutral-200/50"
+                  ? "bg-[#111113]/88 border-white/10 text-white shadow-black/50" 
+                  : "bg-white/95 border-neutral-200 text-neutral-900 shadow-neutral-300/45"
               }`}
               style={{
                 pointerEvents: "all",
@@ -1112,39 +1235,64 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
               }}
             >
               {/* Header */}
-              <div className="flex items-center justify-between pb-2 border-b border-inherit/10">
-                <h3 className="text-xs font-bold uppercase tracking-widest opacity-80">Style</h3>
+              <div className={`flex items-center justify-between rounded-[14px] border px-2 py-1.5 ${
+                isDark ? "bg-white/[0.035] border-white/10" : "bg-neutral-50 border-neutral-200"
+              }`}>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="h-7 w-7 shrink-0 rounded-full border shadow-inner"
+                    style={{
+                      background: `linear-gradient(145deg, rgba(255,255,255,0.34), rgba(255,255,255,0) 42%), ${activeColorOption.value}`,
+                      borderColor: isDark ? "rgba(255,255,255,0.16)" : "rgba(23,23,23,0.14)",
+                    }}
+                  />
+                  <div className="min-w-0">
+                    <h3 className="text-[9px] font-black uppercase tracking-[0.12em] opacity-80">Style</h3>
+                    <p className={`truncate text-[8px] font-semibold ${isDark ? "text-white/45" : "text-neutral-500"}`}>
+                      {activeColorOption.name} · {activeStyles.size.toUpperCase()}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsStylePanelExpanded(false)}
+                  className={`h-7 w-7 rounded-full border text-sm font-black transition-colors ${
+                    isDark ? "border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white" : "border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-100 hover:text-neutral-950"
+                  }`}
+                  title="Collapse style controls"
+                >
+                  ×
+                </button>
               </div>
 
               {/* 1. Color Grid */}
-              <div className="flex flex-col gap-2.5">
-                <span className={`text-[10px] font-semibold tracking-wide ${isDark ? "text-white/40" : "text-neutral-400"}`}>Color</span>
-                <div className="grid grid-cols-5 gap-2.5">
-                  {[
-                    { id: "black", value: "#1e293b" },
-                    { id: "grey", value: "#64748b" },
-                    { id: "red", value: "#ef4444" },
-                    { id: "orange", value: "#f97316" },
-                    { id: "yellow", value: "#eab308" },
-                    { id: "green", value: "#22c55e" },
-                    { id: "light-blue", value: "#06b6d4" },
-                    { id: "blue", value: "#3b82f6" },
-                    { id: "violet", value: "#8b5cf6" },
-                    { id: "pink", value: "#ec4899" }
-                  ].map((c) => (
+              <div className={`rounded-[14px] border p-1.5 ${isDark ? "bg-white/[0.025] border-white/10" : "bg-neutral-50/80 border-neutral-200"}`}>
+                <div className="mb-1 flex items-center justify-between">
+                  <span className={`text-[8px] font-black uppercase tracking-[0.1em] ${isDark ? "text-white/45" : "text-neutral-500"}`}>Color</span>
+                  <span className={`text-[8px] font-bold ${isDark ? "text-white/35" : "text-neutral-400"}`}>{activeColorOption.name}</span>
+                </div>
+                <div className="grid grid-cols-5 gap-1">
+                  {styleColorOptions.map((c) => (
                     <button
                       key={c.id}
                       onClick={() => setStyle(DefaultColorStyle, c.id)}
-                      className={`w-8 h-8 rounded-xl border-[2.5px] transition-all duration-200 relative flex items-center justify-center hover:scale-110 active:scale-95 ${
+                      className={`h-6 w-6 rounded-[9px] border transition-all duration-200 relative flex items-center justify-center hover:-translate-y-0.5 active:translate-y-0 active:scale-95 ${
                         activeStyles.color === c.id 
-                          ? isDark ? "border-white shadow-[0_0_12px_rgba(255,255,255,0.3)]" : "border-neutral-900 shadow-md" 
-                          : "border-transparent shadow-sm"
+                          ? isDark ? "border-white shadow-[0_0_0_3px_rgba(255,255,255,0.10),0_8px_16px_rgba(0,0,0,0.35)]" : "border-neutral-950 shadow-[0_0_0_3px_rgba(23,23,23,0.08),0_8px_14px_rgba(15,23,42,0.16)]" 
+                          : isDark ? "border-white/10 shadow-sm hover:border-white/30" : "border-white shadow-sm hover:border-neutral-300"
                       }`}
-                      style={{ backgroundColor: c.value }}
-                      title={c.id}
+                      style={{
+                        background: `linear-gradient(145deg, rgba(255,255,255,0.36), rgba(255,255,255,0) 40%), ${c.value}`,
+                      }}
+                      title={c.name}
                     >
                       {activeStyles.color === c.id && (
-                        <div className={`w-2 h-2 rounded-full ${c.id === 'black' && !isDark ? 'bg-white/80' : 'bg-white'} shadow-sm`} />
+                        <span className={`h-3 w-3 rounded-full flex items-center justify-center shadow-sm ${
+                          ["yellow", "green"].includes(c.id) ? "bg-black/70 text-white" : "bg-white/85 text-black"
+                        }`}>
+                          <svg width="8" height="8" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+                          </svg>
+                        </span>
                       )}
                     </button>
                   ))}
@@ -1152,21 +1300,16 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
               </div>
 
               {/* 2. Stroke / Size Section */}
-              <div className="flex flex-col gap-2.5">
-                <span className={`text-[10px] font-semibold tracking-wide ${isDark ? "text-white/40" : "text-neutral-400"}`}>Stroke</span>
-                <div className={`flex rounded-xl p-1 gap-1 ${isDark ? "bg-white/5" : "bg-neutral-100"}`}>
-                  {[
-                    { id: "s", label: "S", weight: "2px" },
-                    { id: "m", label: "M", weight: "4px" },
-                    { id: "l", label: "L", weight: "6px" },
-                    { id: "xl", label: "XL", weight: "8px" }
-                  ].map((s) => (
+              <div className="flex flex-col gap-1">
+                <span className={`px-1 text-[8px] font-black uppercase tracking-[0.1em] ${isDark ? "text-white/45" : "text-neutral-500"}`}>Stroke</span>
+                <div className={`grid grid-cols-4 rounded-[14px] border p-1 gap-1 ${isDark ? "bg-white/[0.025] border-white/10" : "bg-neutral-50/80 border-neutral-200"}`}>
+                  {strokeOptions.map((s) => (
                     <button
                       key={s.id}
                       onClick={() => setStyle(DefaultSizeStyle, s.id)}
-                      className={`flex-1 flex flex-col items-center justify-center gap-1.5 h-10 rounded-lg transition-all text-[9px] font-bold ${
+                      className={`flex flex-col items-center justify-center gap-0.5 h-8 rounded-[10px] transition-all text-[8px] font-black ${
                         activeStyles.size === s.id
-                          ? isDark ? "bg-white/10 text-white shadow-sm" : "bg-white text-black shadow-sm"
+                          ? isDark ? "bg-white text-black shadow-sm" : "bg-white text-black shadow-sm"
                           : isDark ? "text-white/50 hover:bg-white/5 hover:text-white" : "text-neutral-500 hover:bg-black/5 hover:text-black"
                       }`}
                     >
@@ -1178,21 +1321,16 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
               </div>
 
               {/* 3. Dash Section */}
-              <div className="flex flex-col gap-2.5">
-                <span className={`text-[10px] font-semibold tracking-wide ${isDark ? "text-white/40" : "text-neutral-400"}`}>Line Style</span>
-                <div className={`flex rounded-xl p-1 gap-1 ${isDark ? "bg-white/5" : "bg-neutral-100"}`}>
-                  {[
-                    { id: "draw", label: "Draw", render: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14c2-2 4-4 8-4s6 2 8 4"/></svg> },
-                    { id: "solid", label: "Solid", render: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12h16"/></svg> },
-                    { id: "dashed", label: "Dash", render: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12h3M10 12h4M17 12h3"/></svg> },
-                    { id: "dotted", label: "Dot", render: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg> }
-                  ].map((d) => (
+              <div className="flex flex-col gap-1">
+                <span className={`px-1 text-[8px] font-black uppercase tracking-[0.1em] ${isDark ? "text-white/45" : "text-neutral-500"}`}>Line</span>
+                <div className={`grid grid-cols-4 rounded-[14px] border p-1 gap-1 ${isDark ? "bg-white/[0.025] border-white/10" : "bg-neutral-50/80 border-neutral-200"}`}>
+                  {dashOptions.map((d) => (
                     <button
                       key={d.id}
                       onClick={() => setStyle(DefaultDashStyle, d.id)}
-                      className={`flex-1 flex items-center justify-center h-10 rounded-lg transition-all ${
+                      className={`flex items-center justify-center h-8 rounded-[10px] transition-all ${
                         activeStyles.dash === d.id
-                          ? isDark ? "bg-white/10 text-white shadow-sm" : "bg-white text-black shadow-sm"
+                          ? isDark ? "bg-white text-black shadow-sm" : "bg-white text-black shadow-sm"
                           : isDark ? "text-white/50 hover:bg-white/5 hover:text-white" : "text-neutral-500 hover:bg-black/5 hover:text-black"
                       }`}
                       title={d.label}
@@ -1202,33 +1340,9 @@ function Canvas({ socketRef, roomId, slideId, lines, onDrawEnd, theme, isChatOpe
                   ))}
                 </div>
               </div>
-
-              {/* 4. Fill Section */}
-              <div className="flex flex-col gap-2.5">
-                <span className={`text-[10px] font-semibold tracking-wide ${isDark ? "text-white/40" : "text-neutral-400"}`}>Fill</span>
-                <div className={`flex rounded-xl p-1 gap-1 ${isDark ? "bg-white/5" : "bg-neutral-100"}`}>
-                  {[
-                    { id: "none", label: "None" },
-                    { id: "semi", label: "Semi" },
-                    { id: "solid", label: "Solid" },
-                    { id: "pattern", label: "Pattern" }
-                  ].map((f) => (
-                    <button
-                      key={f.id}
-                      onClick={() => setStyle(DefaultFillStyle, f.id)}
-                      className={`flex-1 text-[10px] font-bold h-9 rounded-lg transition-all ${
-                        activeStyles.fill === f.id
-                          ? isDark ? "bg-white/10 text-white shadow-sm" : "bg-white text-black shadow-sm"
-                          : isDark ? "text-white/50 hover:bg-white/5 hover:text-white" : "text-neutral-500 hover:bg-black/5 hover:text-black"
-                      }`}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
-          )
+          );
+          }
         }}
         onMount={(editorInstance) => {
           editorRef.current = editorInstance;
